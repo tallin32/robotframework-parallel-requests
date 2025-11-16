@@ -1,0 +1,4 @@
+httpx>=0.23.0
+robotframework>=4.0
+respx>=0.20.0
+pytest>=7.0
