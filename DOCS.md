@@ -24,18 +24,13 @@
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — Deep dive into design
   - Core components (RequestTask, ResponseStore, Transport, WorkerPool, Library)
   - Request flow diagram
-  - Compatibility modes explained
+  - Compatibility modes explained (removed - library exposes only prefixed keywords)
   - Extension points for adding new transports or keywords
   - MVP vs future enhancements
   - Testing strategy
   - Known limitations
 
-### 🔄 Compatibility Mode Explained
-- **[COMPATIBILITY_MODE_EXPLANATION.md](COMPATIBILITY_MODE_EXPLANATION.md)** — How keyword routing works
-  - LSP stubs vs runtime routing
-  - Complete routing flow diagrams
-  - Why this approach works
-  - Examples of both prefixed and non-prefixed usage
+<!-- Compatibility mode documentation removed. The library exposes only `Parallel `-prefixed keywords. -->
 
 ## Files Overview
 
@@ -47,7 +42,7 @@ robot_parallel_requests/
   tasks.py                 - RequestTask dataclass
   response_store.py        - Response storage by ID
   worker.py                - ThreadPoolExecutor worker pool
-  compat_stubs.py          - LSP-friendly keyword stubs
+  # compat_stubs.py removed (was LSP-friendly keyword stubs)
   transport/
     base.py                - Abstract transport interface
     httpx_sync.py          - Synchronous httpx transport (MVP)
@@ -58,7 +53,7 @@ robot_parallel_requests/
 ```
 tests/
   test_core.py             - 9 unit tests (worker, transport, library)
-  test_compat.py           - 3 tests for compatibility mode
+  # test_compat.py removed (compat mode deprecated)
   conftest.py              - pytest fixtures
 
 examples/
@@ -78,7 +73,7 @@ requirements.txt           - Python dependencies
 | QUICKSTART.md | New users | 5-min setup, examples, keywords ref |
 | README.md | All users | Full API, all features, all use cases |
 | ARCHITECTURE.md | Contributors | Design, components, extensibility, roadmap |
-| COMPATIBILITY_MODE_EXPLANATION.md | Power users | How LSP stubs + routing works |
+| (Compatibility mode docs removed) | N/A | Compatibility mode was removed; library exposes only prefixed keywords |
 
 ## Common Tasks
 
@@ -98,7 +93,7 @@ requirements.txt           - Python dependencies
 3. Implement `TransportBase.send()` interface
 
 ### "I want to understand keyword routing and LSP support"
-1. Read [COMPATIBILITY_MODE_EXPLANATION.md](COMPATIBILITY_MODE_EXPLANATION.md)
+1. The library now exposes only `Parallel `-prefixed keywords. See `robot_parallel_requests/library.py` for the keyword implementation and `robot_parallel_requests/__init__.py` for package exports.
 
 ### "I want to run tests and understand test structure"
 1. See [QUICKSTART.md](QUICKSTART.md) - "Run Tests"
@@ -109,8 +104,7 @@ requirements.txt           - Python dependencies
 **MVP Status: ✅ Complete**
 
 - ✅ ThreadPoolExecutor + httpx sync transport
-- ✅ 10 prefixed keywords + optional non-prefixed
-- ✅ LSP-friendly stubs for IDE autocomplete
+-- ✅ 10 prefixed keywords
 - ✅ Response retrieval by ID
 - ✅ Session management
 - ✅ Error capture and handling

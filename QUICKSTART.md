@@ -171,13 +171,6 @@ Library    robot_parallel_requests.ParallelRequests
 # Keywords: Parallel Create Session, Parallel Queue Request, ...
 ```
 
-### Prefixed + Non-Prefixed (Compat Mode)
-
-```robot
-Library    robot_parallel_requests.ParallelRequests    export_non_prefixed_keywords=True
-# Keywords: Parallel Create Session, Create Session, Parallel Queue Request, Queue Request, ...
-```
-
 ### Custom Worker Count
 
 ```robot

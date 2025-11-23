@@ -12,7 +12,7 @@ Batch Retrieve All Responses
     Parallel Shutdown
     # This pattern is useful for rate limit or bulk operation tests
 *** Settings ***
-Library    robot_parallel_requests.ParallelRequests    export_non_prefixed_keywords=False
+Library    robot_parallel_requests.ParallelRequests
 
 *** Test Cases ***
 Queue Multiple Requests And Wait

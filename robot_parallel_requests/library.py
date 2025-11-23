@@ -4,78 +4,22 @@ from .transport.httpx_sync import HttpxSyncTransport
 from .worker import WorkerPool
 
 
-# Mapping of non-prefixed names to Parallel_ method names for keyword routing
-KEYWORD_ALIASES = {
-    "Create Session": "Parallel_Create_Session",
-    "Queue Request": "Parallel_Queue_Request",
-    "Start Workers": "Parallel_Start_Workers",
-    "Wait For All Requests": "Parallel_Wait_For_All_Requests",
-    "Wait For All And Get Responses": "Parallel_Wait_For_All_And_Get_Responses",
-    "Get Response Object": "Parallel_Get_Response_Object",
-    "Get Response Status": "Parallel_Get_Response_Status",
-    "Get Response Body": "Parallel_Get_Response_Body",
-    "Get Response JSON": "Parallel_Get_Response_JSON",
-    "Set Worker Count": "Parallel_Set_Worker_Count",
-    "Shutdown": "Parallel_Shutdown",
-}
-
-
 class ParallelRequests:
     """Robot Framework library exposing parallelized request keywords.
 
-    By default keywords are exposed with a `Parallel ` prefix (e.g. `Parallel Create Session`).
+    All keywords are exposed with a `Parallel ` prefix (e.g. `Parallel Create Session`)
+    to clearly signal parallel execution semantics.
     
     Args:
-        export_non_prefixed_keywords: If True, also export non-prefixed aliases (e.g. `Create Session`).
-        worker_count: Number of worker threads.
+        worker_count: Number of worker threads. Default is 5.
     """
 
     ROBOT_LIBRARY_SCOPE = "TEST"
 
-    def __init__(self, export_non_prefixed_keywords: bool = False, worker_count: int = 5):
-        self.export_non_prefixed_keywords = export_non_prefixed_keywords
+    def __init__(self, worker_count: int = 5):
         self.transport = HttpxSyncTransport()
         self.worker = WorkerPool(self.transport, max_workers=worker_count)
 
-    def get_keyword_names(self):
-        """Expose both Parallel_ and optionally non-prefixed keyword names to Robot Framework."""
-        # Always expose Parallel_ prefixed keywords
-        prefixed = [
-            "Parallel Create Session",
-            "Parallel Queue Request",
-            "Parallel Start Workers",
-            "Parallel Wait For All Requests",
-            "Parallel Wait For All And Get Responses",
-            "Parallel Get Response Object",
-            "Parallel Get Response Status",
-            "Parallel Get Response Body",
-            "Parallel Get Response JSON",
-            "Parallel Set Worker Count",
-            "Parallel Shutdown",
-        ]
-        
-        if self.export_non_prefixed_keywords:
-            return prefixed + list(KEYWORD_ALIASES.keys())
-        return prefixed
-
-    def run_keyword(self, name: str, args, kwargs=None):
-        """Route keyword calls to the appropriate method."""
-        # Normalize name for method lookup
-        method_name = name.replace(" ", "_")
-        
-        # Check if this is a non-prefixed alias
-        if name in KEYWORD_ALIASES:
-            method_name = KEYWORD_ALIASES[name].replace(" ", "_")
-        
-        method = getattr(self, method_name, None)
-        if method is None:
-            raise AttributeError(f"Keyword '{name}' not found")
-        
-        if kwargs:
-            return method(*args, **kwargs)
-        return method(*args)
-
-    # Session-like keyword
     def Parallel_Create_Session(self, alias: str = "default", base_url: Optional[str] = None, headers: Optional[dict] = None):
         """Parallel Create Session    alias    base_url=None    headers=None
 

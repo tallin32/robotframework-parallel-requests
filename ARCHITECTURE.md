@@ -56,26 +56,9 @@ Exposes Robot keywords with keyword routing:
 **Prefixed keywords** (always exported):
 - `Parallel Create Session`, `Parallel Queue Request`, `Parallel Wait For All Requests`, etc.
 
-**Non-prefixed aliases** (optional, controlled by `export_non_prefixed_keywords`):
-- `Create Session`, `Queue Request`, etc.
+**Non-prefixed aliases:** The library used to offer optional non-prefixed aliases (e.g. `Create Session`) and LSP stubs for IDE autocomplete. That compatibility mode has been removed: the library now exposes only the `Parallel `-prefixed keywords to avoid ambiguity and accidental conflicts with other libraries.
 
-**Keyword routing:**
-- `get_keyword_names()` returns list of available keywords (prefixed + optional non-prefixed)
-- `run_keyword(name, args)` dispatches to the appropriate method (handles both prefixed and non-prefixed via `KEYWORD_ALIASES` map)
-
-**Why `run_keyword()`?**
-Robot Framework's keyword discovery introspects method names. We can't simply add non-prefixed methods at runtime without using `run_keyword()`. This approach:
-1. Keeps the class clean (no dynamic method binding)
-2. Supports both prefixed and non-prefixed keywords from one library
-3. Works seamlessly with Robot's keyword runner
-
-### 6. LSP Compatibility Stubs (`compat_stubs.py`)
-
-Static function stubs purely for IDE/language-server indexing:
-- Names like `Create_Session`, `Queue_Request` (underscores for Python)
-- Raise `NotImplementedError` at runtime
-- Exist only so LSPs can autocomplete non-prefixed keyword names
-- Users never call these directly; Robot keywords are dispatched via `run_keyword()`
+<!-- LSP compatibility stubs and runtime routing for non-prefixed keywords have been removed. -->
 
 ## Request Flow
 
@@ -103,31 +86,10 @@ Robot retrieves via Parallel Get Response Object, etc.
 
 ## Compatibility Modes
 
-### Prefixed Only (Default)
-
-```robot
-Library    robot_parallel_requests.ParallelRequests
-# export_non_prefixed_keywords=False (default)
-
-*** Keywords ***
-Parallel Create Session
-Parallel Queue Request
-```
-
-**Pros:** No risk of naming conflicts, clear namespace.
-
-### Prefixed + Non-Prefixed (Opt-In)
-
-```robot
-Library    robot_parallel_requests.ParallelRequests    export_non_prefixed_keywords=True
-
-*** Keywords ***
-Parallel Create Session    # Still available
-Create Session             # Also available (routes to Parallel_Create_Session via run_keyword)
-```
-
-**Pros:** Shorter keyword names, RequestsLibrary parity.
-**Cons:** Risk of conflict if RequestsLibrary is also loaded.
+Compatibility/compat mode has been removed. The library now exposes only the `Parallel `-prefixed
+keywords (e.g. `Parallel Create Session`, `Parallel Queue Request`) to avoid ambiguity and
+accidental keyword conflicts with other Robot Framework libraries. This keeps the surface area
+small and explicit for users who need parallel request semantics.
 
 ## Extension Points
 
@@ -159,14 +121,13 @@ def Parallel_New_Keyword(self, arg1, arg2):
 ```
 
 2. Update `get_keyword_names()` if needed.
-
-3. If non-prefixed alias desired, add to `KEYWORD_ALIASES`.
+2. Update library documentation or keyword registry if needed.
 
 ## MVP vs Future Enhancements
 
 ### MVP (Current)
 - ThreadPool + synchronous httpx transport
-- Prefixed (`Parallel_`) and optional non-prefixed keywords
+- Parallel (`Parallel_`) prefixed keywords
 - Response retrieval (status, body, JSON, raw object)
 - Worker count configuration
 - Basic session management
@@ -184,7 +145,7 @@ def Parallel_New_Keyword(self, arg1, arg2):
 ## Testing Strategy
 
 - **Unit tests** (`tests/test_core.py`): Use `respx` to mock httpx requests, validate worker pool and library behavior.
-- **Compat tests** (`tests/test_compat.py`): Validate keyword routing, non-prefixed names, and LSP stubs.
+<!-- Compat tests removed (compat mode deprecated) -->
 - **Integration tests** (optional): Run against httpbin or local test server.
 
 ## Known Limitations

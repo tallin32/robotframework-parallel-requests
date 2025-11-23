@@ -11,9 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial MVP release: Parallelized HTTP requests using ThreadPoolExecutor + httpx.
 - Batch response retrieval keyword: `Parallel Wait For All And Get Responses`.
 - RequestsLibrary-compatible keyword API with `Parallel ` prefix.
-- Optional non-prefixed keywords via `export_non_prefixed_keywords=True`.
-- LSP-friendly keyword stubs for IDE autocomplete support.
-- Robot Framework keyword routing via `get_keyword_names()` and `run_keyword()`.
+ - RequestsLibrary-compatible keyword API with `Parallel ` prefix.
 - Direct `httpx.Response` object access for advanced assertions.
 - Session management with base URL and default headers.
 - Configurable worker count and timeout support.

@@ -1,51 +1,62 @@
-# Gotchas & Best Practices
-
-**Library Scope:**
-
-By default, Robot Framework reuses the same library instance for all tests in a suite. This can cause issues if you call `Parallel Shutdown` in one test—subsequent tests will not be able to queue requests, resulting in errors like `cannot schedule new futures after shutdown`.
-
-**Best Practice:**
-
-- This library sets `ROBOT_LIBRARY_SCOPE = "TEST"` so each test gets a fresh instance and resources are always isolated. This is the most idiomatic and robust approach for libraries managing connections, pools, or other stateful resources.
-- If you write your own Robot Framework libraries (e.g., for database/ORM access), consider using `ROBOT_LIBRARY_SCOPE = "TEST"` unless you have a strong reason to share state across tests.
-
-**If you override the scope:**
-- Use `Suite Teardown` or `Test Teardown` to call shutdown/cleanup keywords, and avoid calling shutdown in individual tests unless you know the implications.
-
-# robot_parallel_requests
+# robotframework-parallel-requests
 
 A Robot Framework library for parallelized HTTP requests using `httpx` and ThreadPool.
 
-Queue multiple HTTP requests and run them in parallel, then retrieve responses by ID or await all responses. Designed for testing scenarios like rate limiting, bulk API operations, and performance validation.
+**Queue multiple HTTP requests and run them in parallel**, then retrieve responses by ID or await all responses. Designed for testing scenarios like rate limiting, bulk API operations, and performance validation.
+
+## Status
+
+⚠️ **Beta** — Core functionality stable; API may evolve.
 
 ## Features
 
 - **Parallelized requests**: Queue up multiple HTTP requests and execute them concurrently using ThreadPoolExecutor.
-- **RequestsLibrary-like API**: Keywords mirror RequestsLibrary for familiarity (with `Parallel ` prefix by default).
+- **RequestsLibrary-like API**: Keywords mirror RequestsLibrary for familiarity (with `Parallel ` prefix).
 - **Direct response access**: Retrieve the underlying `httpx.Response` object for advanced assertions.
-- **Keyword compatibility mode**: Optional non-prefixed keywords (`Create Session`, `Queue Request`) when no conflict risk exists.
-- **Language server support**: LSP-friendly stubs enable IDE autocomplete for both prefixed and non-prefixed keywords.
 - **Simple session management**: Create named sessions with base URLs and default headers.
+
+## Table of Contents
+
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Comparison with RequestsLibrary](#comparison-with-requestslibrary)
+- [Keywords Reference](#keywords)
+- [Library Initialization](#library-initialization)
+- [Use Cases](#use-cases)
+- [Error Handling](#error-handling)
+- [Best Practices](#best-practices)
+- [Architecture](#architecture)
+- [Testing](#testing)
 
 ## Installation
 
+**From PyPI (when released):**
+```bash
+pip install robotframework-parallel-requests
+```
+
+**Development/Local Installation:**
 ```bash
 pip install -r requirements.txt
 ```
 
-Dependencies:
-- `httpx>=0.23.0` - HTTP client
+**Prerequisites:**
+- Python 3.8+
+- Robot Framework 4.0+
+
+**Dependencies:**
+- `httpx>=0.23.0` - Async HTTP client
 - `robotframework>=4.0` - Robot Framework core
-- `pytest>=7.0` - Testing (dev)
-- `respx>=0.20.0` - httpx mocking (dev)
+- `pytest>=7.0` - Testing (dev only)
+- `respx>=0.20.0` - httpx mocking (dev only)
 
 ## Quick Start
 
-### Basic Usage (Prefixed Keywords - Default)
+### Basic Usage
 
 ```robot
 *** Settings ***
-Library    robot_parallel_requests.ParallelRequests
+Library    robot_parallel_requests
 
 *** Test Cases ***
 Queue And Wait For Responses
@@ -83,70 +94,130 @@ Access Response Object
     Parallel Shutdown
 ```
 
-### Optional: Non-Prefixed Keywords (Compatibility Mode)
+## Comparison with RequestsLibrary
 
-If you're not mixing RequestsLibrary and want shorter keyword names:
+| Feature | robot_parallel_requests | RequestsLibrary |
+|---------|------------------------|-----------------|
+| **Parallel/Async Requests** | ✅ Native ThreadPoolExecutor | ❌ Sequential only |
+| **Queue Multiple Requests** | ✅ Yes, with ID-based retrieval | ❌ No |
+| **Bulk Operations** | ✅ Optimized | ❌ Requires loops + waits |
+| **Rate Limiting Tests** | ✅ Workable, with forthcoming enhancements | ⚠️ Difficult/slow |
+| **API Compatibility** | Similar keywords (with `Parallel ` prefix) | —  |
+| **Direct Response Objects** | ✅ `httpx.Response` access | ✅ `requests.Response` access |
+| **Session Management** | ✅ Named sessions | ✅ Named sessions |
+
+**When to use robot_parallel_requests:**
+- Testing APIs with rate limits, quotas, or concurrency requirements
+- Bulk operations (e.g., creating 100 records in parallel)
+- Performance/load testing within Robot Framework
+- Simulating real-world parallel client behavior
+Optimizing tests that make many requests in succession
+
+**When to stick with RequestsLibrary:**
+- Simple sequential API testing
+- Lightweight HTTP assertions
+- No parallel workload requirements
+- But feel free to use both—we're good with that
+
+## Error Handling
+
+When a request fails (network error, timeout, invalid URL), the exception is stored in the response store:
 
 ```robot
-*** Settings ***
-Library    robot_parallel_requests.ParallelRequests    export_non_prefixed_keywords=True
-
 *** Test Cases ***
-Using Non-Prefixed Keywords
-    Create Session    alias=default
-    ${id}=    Queue Request    GET    https://example.com/api
-    Wait For All Requests    timeout=30
-    ${body}=    Get Response Body    ${id}
-    Shutdown
+Handle Request Failures
+    Parallel Create Session
+    ${id1}=    Parallel Queue Request    GET    https://httpbin.org/delay/2    timeout=1
+    ${id2}=    Parallel Queue Request    GET    https://invalid-domain-12345.com
+    
+    Parallel Wait For All Requests    timeout=10
+    
+    # Check if response is an exception
+    ${resp}=    Parallel Get Response Object    ${id1}
+    Run Keyword If    '${type(resp).__name__}' == 'ReadTimeout'    Log    Request timed out
+    
+    # For a regular response, status code is safe
+    ${resp2}=    Parallel Get Response Object    ${id2}
+    Run Keyword If    '${type(resp2).__name__}' == 'ConnectError'    Log    Request failed: ${resp2}
+    
+    Parallel Shutdown
 ```
+
+**Safe Patterns:**
+- Always call `Parallel Wait For All Requests` before retrieving responses
+- Use `Parallel Get Response Object` and check the exception type if needed
+- Use `Run Keyword If` with type checks for conditional error handling
+
+## Best Practices
+
+**Library Scope:**
+- This library sets `ROBOT_LIBRARY_SCOPE = "TEST"` so each test gets a fresh instance and resources are always isolated.
+- This is the most idiomatic and robust approach for libraries managing connections, pools, or other stateful resources.
+
+**Shutdown Handling:**
+- ❌ **Bad:** Calling `Parallel Shutdown` in individual tests causes `cannot schedule new futures after shutdown` errors in subsequent tests.
+- ✅ **Good:** Use `Test Teardown` or rely on the automatic cleanup when the test scope ends.
+
+**Worker Count:**
+- Default `worker_count=5` is suitable for most scenarios.
+- For high-throughput tests, increase to 10-20.
+- For I/O-heavy operations, ThreadPoolExecutor can handle 50+ safely.
+
+**Timeout Handling:**
+- Always set explicit timeouts in `Parallel Wait For All Requests` to prevent hanging tests.
+- Individual request timeouts (via `timeout=` parameter in `Queue Request`) affect only that request.
+
+**If you override library scope:**
+- Use `Suite Teardown` to call shutdown/cleanup keywords.
+- Avoid calling shutdown in individual tests unless you fully understand the implications.
 
 ## Keywords
 
 ### Session Management
 
-**Parallel Create Session** (or `Create Session` in compat mode)
+**Parallel Create Session**
 - **Arguments:** `alias` (str), `base_url` (str, optional), `headers` (dict, optional)
 - **Description:** Create a named session with optional base URL and default headers.
 
-**Parallel Shutdown** (or `Shutdown`)
+**Parallel Shutdown**
 - **Description:** Shutdown worker pool and close transport.
 
 ### Request Queuing
 
-**Parallel Queue Request** (or `Queue Request`)
+**Parallel Queue Request**
 - **Arguments:** `method` (str), `url` (str), `id` (str, optional), `**kwargs` (headers, json, data, params, etc.)
 - **Returns:** Response ID (string)
 - **Description:** Queue a request to be processed by the worker pool. Returns a response ID for later retrieval.
 
-**Parallel Start Workers** (or `Start Workers`)
+**Parallel Start Workers**
 - **Description:** Start worker pool (workers are ready on init; this is a no-op in MVP).
 
-**Parallel Wait For All Requests** (or `Wait For All Requests`)
+**Parallel Wait For All Requests**
 - **Arguments:** `timeout` (float, optional, seconds)
 - **Description:** Block until all queued requests complete or timeout expires.
 
 ### Response Retrieval
 
-**Parallel Get Response Object** (or `Get Response Object`)
+**Parallel Get Response Object**
 - **Arguments:** `id` (str)
 - **Returns:** `httpx.Response` object (or Exception if request failed)
 - **Description:** Retrieve the underlying response object for direct assertions.
 
-**Parallel Get Response Status** (or `Get Response Status`)
+**Parallel Get Response Status**
 - **Arguments:** `id` (str)
 - **Returns:** Status code (int)
 
-**Parallel Get Response Body** (or `Get Response Body`)
+**Parallel Get Response Body**
 - **Arguments:** `id` (str)
 - **Returns:** Response body as string
 
-**Parallel Get Response JSON** (or `Get Response JSON`)
+**Parallel Get Response JSON**
 - **Arguments:** `id` (str)
 - **Returns:** Parsed JSON (dict/list)
 
 ### Configuration
 
-**Parallel Set Worker Count** (or `Set Worker Count`)
+**Parallel Set Worker Count**
 - **Arguments:** `count` (int)
 - **Description:** Adjust the number of concurrent worker threads.
 
@@ -154,20 +225,16 @@ Using Non-Prefixed Keywords
 
 ### Arguments
 
-- `export_non_prefixed_keywords` (bool, default: `False`): If `True`, expose keywords without the `Parallel ` prefix (e.g., `Create Session` instead of `Parallel Create Session`).
 - `worker_count` (int, default: `5`): Number of worker threads in the pool.
 
 ### Examples
 
 ```robot
-# Default: Parallel-prefixed keywords
-Library    robot_parallel_requests.ParallelRequests
+# Default: 5 worker threads
+Library    robot_parallel_requests
 
-# High concurrency
-Library    robot_parallel_requests.ParallelRequests    worker_count=20
-
-# Compatibility mode (non-prefixed)
-Library    robot_parallel_requests.ParallelRequests    export_non_prefixed_keywords=True
+# High concurrency: 20 worker threads
+Library    robot_parallel_requestsworker_count=20
 ```
 
 ## Use Cases
@@ -252,8 +319,7 @@ robot examples/parallel_requests.robot
 - **`transport/base.py`**: Abstract transport interface.
 - **`transport/httpx_sync.py`**: Synchronous httpx-based transport.
 - **`worker.py`**: ThreadPoolExecutor-based worker pool.
-- **`library.py`**: Robot Framework library with keywords and routing.
-- **`compat_stubs.py`**: LSP-friendly stubs for static analysis.
+- **`library.py`**: Robot Framework library with keywords.
 
 ## Future Enhancements
 
@@ -262,6 +328,60 @@ robot examples/parallel_requests.robot
 - **Retry/backoff policies** (v1.1): `Set Retry Policy` keyword.
 - **Metrics and reporting**: Request counts, latencies, error rates.
 - **Per-session request queues**: Advanced session management.
+
+## Contributing
+
+Contributions are welcome! To get started:
+Contributions are welcome! For public/open-source contributions we recommend the
+fork → pull request workflow (standard GitHub flow). This keeps the main
+repository protected while making it easy for outside contributors to propose
+changes.
+
+Quick contribution steps (fork → PR):
+
+1. Fork the repository on GitHub to your account.
+2. Clone your fork and add the upstream remote:
+
+```powershell
+git clone git@github.com:your-username/robotframework-parallel-requests.git
+cd robotframework-parallel-requests
+git remote add upstream git@github.com:tallin32/robotframework-parallel-requests.git
+```
+
+3. Create a feature branch, make changes, run tests locally:
+
+```powershell
+git checkout -b feature/my-feature
+python -m venv .venv
+. .venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+pytest tests/ -v
+```
+
+4. Push your branch to your fork and open a pull request against
+`tallin32/robotframework-parallel-requests:main`:
+
+```powershell
+git push origin feature/my-feature
+# then open a PR on GitHub from your branch into tallin32:main
+```
+
+Maintainer workflow (recommended for this repo):
+
+- Protect the `main` branch and require all changes via Pull Requests.
+- Require at least one reviewer and passing CI before merging.
+
+What to include in a PR:
+
+- A clear summary of the change and why it is needed.
+- Testing notes (how you ran tests locally, what CI should run).
+- If the change affects the public API, include README/docs updates.
+
+If you'd rather be added as a collaborator (for frequent contributors), reach
+out and we can add you as a repo collaborator so you can push branches directly
+— but merges should still go through PRs.
+
+If you want, I can add a `CONTRIBUTING.md` and a PR template to this repo (recommended); I can create those now.
 
 ## License
 
