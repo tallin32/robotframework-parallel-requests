@@ -1,0 +1,37 @@
+name: External Examples Smoke
+
+on:
+  schedule:
+    - cron: "15 9 * * *"
+  workflow_dispatch:
+
+jobs:
+  smoke-examples:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -e .
+
+    - name: Run public API Robot examples
+      run: |
+        robot --outputdir robot-smoke-results examples/parallel_requests.robot examples/advanced_features.robot
+
+    - name: Upload Robot smoke artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: external-examples-smoke-results
+        path: robot-smoke-results/*
+        retention-days: 7
