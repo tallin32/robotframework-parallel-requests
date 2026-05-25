@@ -2,6 +2,7 @@
 
 [![PyPI version](https://badge.fury.io/py/robotframework-parallel-requests.svg)](https://badge.fury.io/py/robotframework-parallel-requests)
 [![CI Tests](https://github.com/tallin32/robotframework-parallel-requests/actions/workflows/tests.yml/badge.svg)](https://github.com/tallin32/robotframework-parallel-requests/actions/workflows/tests.yml)
+[![Docs](https://github.com/tallin32/robotframework-parallel-requests/actions/workflows/pages.yml/badge.svg)](https://tallin32.github.io/robotframework-parallel-requests/)
 [![Python Version](https://img.shields.io/pypi/pyversions/robotframework-parallel-requests.svg)](https://pypi.org/project/robotframework-parallel-requests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
