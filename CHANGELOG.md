@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Unknown session aliases now fail fast with an explicit error.
 - Worker reconfiguration now recreates transport and preserves metrics collection wiring.
+- Publish workflow now uses GitHub OIDC trusted publishing for PyPI/TestPyPI instead of long-lived API token secrets.
 ### Fixed
 ### Deprecated
 ### Removed

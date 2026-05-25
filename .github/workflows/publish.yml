@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,7 +24,7 @@ jobs:
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install build twine
+          pip install build
 
       - name: Build distribution artifacts
         run: |
@@ -47,29 +48,18 @@ jobs:
             echo "Unsupported tag format: $TAG" && exit 1
           fi
 
-      - name: Upload to TestPyPI (non-final builds)
+      - name: Publish to TestPyPI (non-final builds)
         if: steps.classify.outputs.type != 'final'
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
-        run: |
-          if [ -n "${TWINE_PASSWORD}" ]; then
-            echo "Uploading to TestPyPI (type=${{ steps.classify.outputs.type }})..."
-            twine upload --repository-url https://test.pypi.org/legacy/ dist/*
-          else
-            echo "TEST_PYPI_API_TOKEN not set; skipping TestPyPI upload."
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
 
-      - name: Upload to PyPI (final & rc releases)
+      - name: Publish to PyPI (final & rc releases)
         if: steps.classify.outputs.type == 'final' || steps.classify.outputs.type == 'rc'
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: |
-          if [ -n "${TWINE_PASSWORD}" ]; then
-            echo "Uploading ${{ steps.classify.outputs.type }} release to PyPI..."
-            twine upload dist/*
-          else
-            echo "PYPI_API_TOKEN not set; skipping production PyPI upload."
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
 
       - name: Summary
         run: |
