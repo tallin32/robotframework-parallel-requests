@@ -131,6 +131,7 @@ def Parallel_New_Keyword(self, arg1, arg2):
 - Response retrieval (status, body, JSON, raw object)
 - Worker count configuration
 - Basic session management
+- Fail-fast validation for unknown session aliases
 
 ### v1.1
 - Rate limiting (tokens/sec, burst size)
@@ -141,6 +142,14 @@ def Parallel_New_Keyword(self, arg1, arg2):
 - Async httpx transport (high concurrency)
 - Per-session queuing and management
 - Advanced session options (cookies, auth, proxies)
+
+## Production Scope (Current Release)
+
+- Production path is synchronous transport backed by ThreadPool.
+- Session support is included for base URL resolution and header merging.
+- Unknown session aliases fail fast with a clear error instead of silently sending unresolved requests.
+- Worker pool reconfiguration recreates transport and preserves metrics collection.
+- Async transport remains intentionally deferred until event-loop lifecycle management is implemented end-to-end.
 
 ## Testing Strategy
 

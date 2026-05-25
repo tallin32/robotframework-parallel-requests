@@ -1,0 +1,171 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      release_type: ${{ steps.classify.outputs.type }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+            python-version: '3.x'
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+
+      - name: Build distribution artifacts
+        run: |
+          python -m build
+          ls -l dist
+
+      - name: Upload distribution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+
+      - name: Classify tag
+        id: classify
+        run: |
+          TAG="${GITHUB_REF##*/}"
+          echo "Tag: $TAG"
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "type=final" >> $GITHUB_OUTPUT
+          elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+rc[0-9]+$ ]]; then
+            echo "type=rc" >> $GITHUB_OUTPUT
+          elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(a|b)[0-9]+$ ]]; then
+            echo "type=prerelease" >> $GITHUB_OUTPUT
+          elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.dev[0-9]+$ ]]; then
+            echo "type=dev" >> $GITHUB_OUTPUT
+          else
+            echo "Unsupported tag format: $TAG" && exit 1
+          fi
+
+  publish-testpypi:
+    needs: build
+    if: needs.build.outputs.release_type != 'final'
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+
+  publish-pypi:
+    needs: build
+    if: needs.build.outputs.release_type == 'final' || needs.build.outputs.release_type == 'rc'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+
+  create-release:
+    needs: [build, publish-testpypi, publish-pypi]
+    if: |
+      needs.build.result == 'success' && (
+        (needs.build.outputs.release_type != 'final' && needs.publish-testpypi.result == 'success') ||
+        ((needs.build.outputs.release_type == 'final' || needs.build.outputs.release_type == 'rc') && needs.publish-pypi.result == 'success')
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Generate release notes (changelog or diff)
+        id: notes
+        env:
+          RELEASE_TYPE: ${{ needs.build.outputs.release_type }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF##*/}"
+          VERSION="${TAG#v}"
+          echo "Preparing release notes for $TAG (type=$RELEASE_TYPE)"
+          if [ "$RELEASE_TYPE" = "final" ] || [ "$RELEASE_TYPE" = "rc" ]; then
+            if grep -q "^## \[$VERSION\]" CHANGELOG.md; then
+              echo "Using CHANGELOG section for $VERSION"
+              awk "/^## \[$VERSION\]/ {flag=1; next} /^## \[/ {flag=0} flag" CHANGELOG.md > release_notes.md
+            else
+              echo "ERROR: CHANGELOG section for $VERSION is required for $RELEASE_TYPE releases" >&2
+              exit 1
+            fi
+          else
+            echo "Generating diff-based notes (prerelease/dev)"
+            PREV_TAG=$(git tag --list 'v*' --sort=-version:refname | grep -v "^$TAG$" | head -n1 || true)
+            {
+              echo "### $TAG"
+              if [ -n "$PREV_TAG" ]; then
+                echo "Changes since $PREV_TAG:"
+                git log --pretty=format:'- %h %s (%an)' "$PREV_TAG".."$TAG" || echo "(No commits found in range)"
+              else
+                echo "Initial tag; no previous tag to diff against."
+                git log --pretty=format:'- %h %s (%an)' || echo "(No commits)"
+              fi
+            } > release_notes.md
+          fi
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          cat release_notes.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: ${{ steps.notes.outputs.body }}
+          prerelease: ${{ needs.build.outputs.release_type != 'final' }}
+          files: |
+            dist/*.tar.gz
+            dist/*.whl
+
+      - name: Summary
+        run: |
+          echo "Tag: ${GITHUB_REF##*/}" >> $GITHUB_STEP_SUMMARY
+          echo "Classification: ${{ needs.build.outputs.release_type }}" >> $GITHUB_STEP_SUMMARY
+          echo "Published via environment testpypi: $([[ '${{ needs.build.outputs.release_type }}' != 'final' ]] && echo yes || echo no)" >> $GITHUB_STEP_SUMMARY
+          echo "Published via environment pypi: $([[ '${{ needs.build.outputs.release_type }}' == 'final' || '${{ needs.build.outputs.release_type }}' == 'rc' ]] && echo yes || echo no)" >> $GITHUB_STEP_SUMMARY
+          echo "Release creation attempted: yes" >> $GITHUB_STEP_SUMMARY

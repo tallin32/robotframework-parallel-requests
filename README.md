@@ -1,5 +1,10 @@
 # robotframework-parallel-requests
 
+[![PyPI version](https://badge.fury.io/py/robotframework-parallel-requests.svg)](https://badge.fury.io/py/robotframework-parallel-requests)
+[![CI Tests](https://github.com/tallin32/robotframework-parallel-requests/actions/workflows/tests.yml/badge.svg)](https://github.com/tallin32/robotframework-parallel-requests/actions/workflows/tests.yml)
+[![Python Version](https://img.shields.io/pypi/pyversions/robotframework-parallel-requests.svg)](https://pypi.org/project/robotframework-parallel-requests/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A Robot Framework library for parallelized HTTP requests using `httpx` and ThreadPool.
 
 **Queue multiple HTTP requests and run them in parallel**, then retrieve responses by ID or await all responses. Designed for testing scenarios like rate limiting, bulk API operations, and performance validation.
@@ -7,6 +12,9 @@ A Robot Framework library for parallelized HTTP requests using `httpx` and Threa
 ## Status
 
 ⚠️ **Beta** — Core functionality stable; API may evolve.
+
+Current production scope uses synchronous `httpx` transport with ThreadPool concurrency.
+Native async transport is planned for a later release.
 
 ## Features
 
@@ -27,6 +35,10 @@ A Robot Framework library for parallelized HTTP requests using `httpx` and Threa
 - [Best Practices](#best-practices)
 - [Architecture](#architecture)
 - [Testing](#testing)
+- [Future Enhancements](#future-enhancements)
+- [Contributing](#contributing)
+- [Release Process](#release-process)
+- [License](#license)
 
 ## Installation
 
@@ -323,11 +335,11 @@ robot examples/parallel_requests.robot
 
 ## Future Enhancements
 
-- **Async transport** (`transport/httpx_async.py`) using `httpx.AsyncClient` for high-concurrency scenarios (10k+ concurrent requests).
-- **Rate limiting** (v1.1): `Set Rate Limit` keyword with token-bucket algorithm.
-- **Retry/backoff policies** (v1.1): `Set Retry Policy` keyword.
-- **Metrics and reporting**: Request counts, latencies, error rates.
-- **Per-session request queues**: Advanced session management.
+- **Async transport** (`transport/httpx_async.py`) using `httpx.AsyncClient` for very high concurrency.
+- **Circuit breaker / adaptive backoff** to complement existing retry policy.
+- **Structured logging / tracing hooks** (OpenTelemetry integration).
+- **Per-session prioritized queues** for differentiated QoS.
+- **Optional persistent response cache** (configurable TTL).
 
 ## Contributing
 
@@ -386,4 +398,81 @@ If you want, I can add a `CONTRIBUTING.md` and a PR template to this repo (recom
 ## License
 
 MIT (see LICENSE if present).
+
+## Release Process
+
+Automated releases are driven by Git tags and a GitHub Actions workflow (`publish.yml`).
+
+### Version Tags (PEP 440)
+
+| Type | Example | Notes |
+|------|---------|-------|
+| Final | `v0.1.0` | Stable release consumers get by default |
+| Release Candidate | `v0.1.0rc1` | Treated as prerelease; published to PyPI & TestPyPI |
+| Beta / Alpha | `v0.1.0b1`, `v0.1.0a1` | Published to TestPyPI only |
+| Dev Snapshot | `v0.1.0.dev1` | Iterative build, TestPyPI only |
+
+### Publishing Matrix
+
+| Tag Type | TestPyPI | PyPI | GitHub Release | Prerelease Flag |
+|----------|----------|-----|----------------|-----------------|
+| Final (`vX.Y.Z`) | No | Yes | Yes | No |
+| RC (`vX.Y.ZrcN`) | Yes | Yes | Yes | Yes |
+| Beta/Alpha (`vX.Y.ZbN/aN`) | Yes | No | Yes | Yes |
+| Dev (`vX.Y.Z.devN`) | Yes | No | Yes | Yes |
+
+### Changelog Enforcement
+
+Final and RC tags must have a `## [X.Y.Z]` section in `CHANGELOG.md`. Missing sections cause the workflow to fail.
+
+### Prerelease Notes Generation
+
+For dev/alpha/beta tags, release notes are generated from the commit diff between the new tag and the previous `v*` tag:
+
+```
+### v0.1.0b1
+Changes since v0.1.0:
+- abc123 Short commit message (Author)
+```
+
+### Release Steps
+
+1. Update `CHANGELOG.md` (for final/RC).
+2. Run tests: `pytest -v` and `robot examples/parallel_requests.robot`.
+3. Tag and push:
+    ```bash
+    git tag v0.1.0rc1
+    git push origin v0.1.0rc1
+    # Final:
+    git tag v0.1.0
+    git push origin v0.1.0
+    ```
+4. Workflow builds, uploads, generates notes, creates GitHub Release.
+
+### Installing Pre-Releases
+
+```bash
+pip install --pre robotframework-parallel-requests
+# Or pin a specific build
+pip install robotframework-parallel-requests==0.1.0rc1
+```
+
+### TestPyPI Validation
+
+```bash
+pip install -i https://test.pypi.org/simple robotframework-parallel-requests==0.1.0b1 --extra-index-url https://pypi.org/simple
+```
+
+### Patch / Hotfix
+
+Add a new section in CHANGELOG, tag, push:
+```bash
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+### Yanks & Post Releases
+
+If a bad release ships, yank on PyPI and publish `X.Y.Z.post1` with the fix.
+
 
