@@ -52,12 +52,14 @@ robot_parallel_requests/
 ### Tests & Examples
 ```
 tests/
-  test_core.py             - 9 unit tests (worker, transport, library)
-  # test_compat.py removed (compat mode deprecated)
+  test_core.py             - Core unit tests
+  test_advanced.py         - Advanced behavior tests (sessions, retry, metrics)
   conftest.py              - pytest fixtures
+  robot/local_api.robot    - Robot integration tests against local test API
 
 examples/
-  parallel_requests.robot  - 3 example Robot test cases
+  parallel_requests.robot  - Core Robot example suite
+  advanced_features.robot  - Advanced Robot example suite
 ```
 
 ### Configuration
@@ -104,20 +106,21 @@ requirements.txt           - Python dependencies
 **MVP Status: ✅ Complete**
 
 - ✅ ThreadPoolExecutor + httpx sync transport
--- ✅ 10 prefixed keywords
+- ✅ Prefixed Robot keyword surface
 - ✅ Response retrieval by ID
 - ✅ Session management
+- ✅ Rate limiting
+- ✅ Retry/backoff policy
+- ✅ Metrics collection
 - ✅ Error capture and handling
-- ✅ 12 comprehensive unit tests
+- ✅ 17 passing pytest tests
 - ✅ Full documentation
 
 **Future Enhancements (v1.1+):**
-- Rate limiting
-- Retry/backoff policies
-- Metrics
 - Async httpx transport for high concurrency
 - Per-session queuing
+- Circuit breaker / adaptive backoff refinements
 
 ---
 
-**Last Updated:** November 16, 2025
+**Last Updated:** May 25, 2026

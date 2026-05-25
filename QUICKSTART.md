@@ -15,7 +15,7 @@ pip install -r requirements.txt
 pytest tests/ -v
 ```
 
-Expected: **12 tests pass** ✓
+Expected: **17 tests pass** ✓
 
 ### 3. Use in Robot Tests
 
@@ -66,21 +66,24 @@ Find Rate Limit
     
     # Queue 101 requests
     @{ids}=    Create List
-    :FOR    ${i}    IN RANGE    101
+    FOR    ${i}    IN RANGE    101
         ${id}=    Parallel Queue Request    POST    /api/favorite-restaurants
         Append To List    @{ids}    ${id}
-    \
+    END
     
     Parallel Wait For All Requests    timeout=60
     
     # Check results
     ${success_count}=    Set Variable    0
     ${error_count}=    Set Variable    0
-    :FOR    ${id}    IN    @{ids}
-        ${resp}=    Parallel Get Response Object    ${id}
-        ${status}=    Get From Dictionary    ${resp}    status_code
-        Run Keyword If    ${status} == 200    Evaluate    ${success_count} + 1
-    \
+    FOR    ${id}    IN    @{ids}
+        ${status}=    Parallel Get Response Status    ${id}
+        IF    ${status} == 200
+            ${success_count}=    Evaluate    ${success_count} + 1
+        ELSE
+            ${error_count}=    Evaluate    ${error_count} + 1
+        END
+    END
     
     Log    Success: ${success_count}, Errors: ${error_count}
     Should Be Equal As Numbers    ${error_count}    1
@@ -101,18 +104,18 @@ Fetch Bulk Profiles
     Parallel Create Session    base_url=https://api.example.com
     
     @{ids}=    Create List
-    :FOR    ${user_id}    IN RANGE    100
+    FOR    ${user_id}    IN RANGE    100
         ${id}=    Parallel Queue Request    GET    /users/${user_id}
         Append To List    @{ids}    ${id}
-    \
+    END
     
     Parallel Wait For All Requests    timeout=30
     
     # All should be 200 OK
-    :FOR    ${id}    IN    @{ids}
+    FOR    ${id}    IN    @{ids}
         ${status}=    Parallel Get Response Status    ${id}
         Should Be Equal    ${status}    200
-    \
+    END
     
     Parallel Shutdown
 ```

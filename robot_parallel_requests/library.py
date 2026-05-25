@@ -65,28 +65,20 @@ class ParallelRequests:
         self.sessions[alias] = session
 
     def Parallel_Queue_Request(self, method: str, url: str, session: Optional[str] = None, id: Optional[str] = None, **kwargs) -> str:
-        """Parallel Queue Request    method    url    session=None    id=None    **kwargs
+        """Parallel Queue Request    method    url    session=None    id=None    kwargs
 
-        Queue a request to be sent by the worker pool. Returns a response id.
+        Queue a request to be sent by the worker pool and return a response id.
+
+        method is the HTTP method (GET, POST, PUT, DELETE, etc.).
+        url can be absolute or relative when a session base_url is provided.
+        session is an optional session alias.
+        id is an optional custom response id.
+        kwargs are forwarded to httpx.request (headers, params, json, data,
+        timeout, follow_redirects, auth, cookies, and other valid httpx options).
         
-        Args:
-            method: HTTP method (GET, POST, PUT, DELETE, etc.)
-            url: URL (can be relative if session has base_url)
-            session: Session alias to use (optional)
-            id: Custom response ID (optional, auto-generated if omitted)
-            **kwargs: Additional httpx request parameters:
-                - headers: dict of HTTP headers
-                - params: dict of query parameters
-                - json: JSON body data (auto-serialized)
-                - data: form data or raw body
-                - timeout: request timeout in seconds
-                - follow_redirects: bool to follow redirects
-                - auth: tuple of (username, password)
-                - cookies: dict of cookies
-        
-        Example:
-            ${id}=    Parallel Queue Request    GET    /users    session=api
-            ${id}=    Parallel Queue Request    POST   /users    json={'name': 'John'}    headers={'X-API-Key': 'secret'}
+        Example usage:
+            Parallel Queue Request    GET    /users    session=api
+            Parallel Queue Request    POST   /users    json={'name': 'John'}    headers={'X-API-Key': 'secret'}
         """
         # Apply rate limiting if configured
         if self.rate_limiter:
@@ -196,49 +188,49 @@ class ParallelRequests:
     # HTTP Method Convenience Keywords
     
     def Parallel_GET(self, url: str, session: Optional[str] = None, id: Optional[str] = None, **kwargs) -> str:
-        """Parallel GET    url    session=None    id=None    **kwargs
+        """Parallel GET    url    session=None    id=None    kwargs
         
         Convenience keyword for GET requests. Equivalent to Parallel Queue Request with method=GET.
         """
         return self.Parallel_Queue_Request("GET", url, session=session, id=id, **kwargs)
     
     def Parallel_POST(self, url: str, session: Optional[str] = None, id: Optional[str] = None, **kwargs) -> str:
-        """Parallel POST    url    session=None    id=None    **kwargs
+        """Parallel POST    url    session=None    id=None    kwargs
         
         Convenience keyword for POST requests. Equivalent to Parallel Queue Request with method=POST.
         """
         return self.Parallel_Queue_Request("POST", url, session=session, id=id, **kwargs)
     
     def Parallel_PUT(self, url: str, session: Optional[str] = None, id: Optional[str] = None, **kwargs) -> str:
-        """Parallel PUT    url    session=None    id=None    **kwargs
+        """Parallel PUT    url    session=None    id=None    kwargs
         
         Convenience keyword for PUT requests. Equivalent to Parallel Queue Request with method=PUT.
         """
         return self.Parallel_Queue_Request("PUT", url, session=session, id=id, **kwargs)
     
     def Parallel_DELETE(self, url: str, session: Optional[str] = None, id: Optional[str] = None, **kwargs) -> str:
-        """Parallel DELETE    url    session=None    id=None    **kwargs
+        """Parallel DELETE    url    session=None    id=None    kwargs
         
         Convenience keyword for DELETE requests. Equivalent to Parallel Queue Request with method=DELETE.
         """
         return self.Parallel_Queue_Request("DELETE", url, session=session, id=id, **kwargs)
     
     def Parallel_PATCH(self, url: str, session: Optional[str] = None, id: Optional[str] = None, **kwargs) -> str:
-        """Parallel PATCH    url    session=None    id=None    **kwargs
+        """Parallel PATCH    url    session=None    id=None    kwargs
         
         Convenience keyword for PATCH requests. Equivalent to Parallel Queue Request with method=PATCH.
         """
         return self.Parallel_Queue_Request("PATCH", url, session=session, id=id, **kwargs)
     
     def Parallel_HEAD(self, url: str, session: Optional[str] = None, id: Optional[str] = None, **kwargs) -> str:
-        """Parallel HEAD    url    session=None    id=None    **kwargs
+        """Parallel HEAD    url    session=None    id=None    kwargs
         
         Convenience keyword for HEAD requests. Equivalent to Parallel Queue Request with method=HEAD.
         """
         return self.Parallel_Queue_Request("HEAD", url, session=session, id=id, **kwargs)
     
     def Parallel_OPTIONS(self, url: str, session: Optional[str] = None, id: Optional[str] = None, **kwargs) -> str:
-        """Parallel OPTIONS    url    session=None    id=None    **kwargs
+        """Parallel OPTIONS    url    session=None    id=None    kwargs
         
         Convenience keyword for OPTIONS requests. Equivalent to Parallel Queue Request with method=OPTIONS.
         """
@@ -255,11 +247,8 @@ class ParallelRequests:
             requests_per_second: Maximum requests per second (e.g., 1.75 for 105 req/min)
             burst_size: Maximum burst size (defaults to requests_per_second + 1)
         
-        Example:
-            # Limit to 105 requests per minute
+        Example usage:
             Parallel Set Rate Limit    1.75
-            
-            # Allow bursts of up to 10 requests
             Parallel Set Rate Limit    1.75    burst_size=10
         """
         self.rate_limiter = TokenBucket(rate=requests_per_second, burst_size=burst_size)
@@ -281,11 +270,8 @@ class ParallelRequests:
             backoff_factor: Multiplier for wait time between retries
             retry_statuses: Comma-separated status codes to retry (defaults to 429,500,502,503,504)
         
-        Example:
-            # Retry up to 3 times with 2x backoff on common error codes
+        Example usage:
             Parallel Set Retry Policy    max_retries=3    backoff_factor=2.0
-            
-            # Only retry on rate limit errors
             Parallel Set Retry Policy    max_retries=5    retry_statuses=429
         """
         statuses = None
@@ -322,10 +308,9 @@ class ParallelRequests:
             - requests_per_second: Actual request rate
             - status_code_counts: Dict of status code frequencies
         
-        Example:
+        Example usage:
             ${metrics}=    Parallel Get Metrics
             Log    Total requests: ${metrics['total_requests']}
-            Log    Success rate: ${metrics['successful_requests']} / ${metrics['total_requests']}
         """
         return self.metrics.get_summary()
     
