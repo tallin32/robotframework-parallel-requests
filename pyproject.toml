@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "robotframework-parallel-requests"
-version = "0.1.0"
+version = "0.1.0.dev1"
 description = "Parallelized HTTP Request library for Robot Framework (httpx + ThreadPool MVP)"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -40,5 +40,8 @@ dev = [
 Homepage = "https://github.com/tallin32/robotframework-parallel-requests"
 Repository = "https://github.com/tallin32/robotframework-parallel-requests"
 Issues = "https://github.com/tallin32/robotframework-parallel-requests/issues"
+
+[tool.setuptools.packages.find]
+include = ["robot_parallel_requests*"]
 
 

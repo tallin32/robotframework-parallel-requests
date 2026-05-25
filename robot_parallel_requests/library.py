@@ -1,4 +1,11 @@
+import re
+from pathlib import Path
 from typing import Optional, Any, Dict
+
+try:
+    from importlib.metadata import PackageNotFoundError, version as get_installed_version
+except ImportError:  # pragma: no cover
+    from importlib_metadata import PackageNotFoundError, version as get_installed_version
 from .tasks import RequestTask
 from .transport.httpx_sync import HttpxSyncTransport
 from .worker import WorkerPool
@@ -6,6 +13,20 @@ from .session import Session
 from .rate_limiter import TokenBucket
 from .retry import RetryPolicy
 from .metrics import MetricsCollector
+
+
+def _discover_library_version() -> str:
+    """Resolve package version from installed metadata, then pyproject fallback."""
+    try:
+        return get_installed_version("robotframework-parallel-requests")
+    except PackageNotFoundError:
+        pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+        if pyproject.exists():
+            content = pyproject.read_text(encoding="utf-8")
+            match = re.search(r'^version\s*=\s*"([^"]+)"', content, re.MULTILINE)
+            if match:
+                return match.group(1)
+    return "0.0.0"
 
 
 class ParallelRequests:
@@ -19,7 +40,7 @@ class ParallelRequests:
     """
 
     ROBOT_LIBRARY_SCOPE = "TEST"
-    ROBOT_LIBRARY_VERSION = "0.1.0"
+    ROBOT_LIBRARY_VERSION = _discover_library_version()
     ROBOT_LIBRARY_DOC_FORMAT = "REST"
 
     def __init__(self, worker_count: int = 5):
