@@ -57,7 +57,7 @@ pip install -r requirements.txt
 - Robot Framework 4.0+
 
 **Dependencies:**
-- `httpx>=0.23.0` - Async HTTP client
+- `httpx>=0.23.0` - HTTP client
 - `robotframework>=4.0` - Robot Framework core
 - `pytest>=7.0` - Testing (dev only)
 - `respx>=0.20.0` - httpx mocking (dev only)
@@ -123,7 +123,7 @@ Access Response Object
 - Bulk operations (e.g., creating 100 records in parallel)
 - Performance/load testing within Robot Framework
 - Simulating real-world parallel client behavior
-Optimizing tests that make many requests in succession
+- Optimizing tests that make many requests in succession
 
 **When to stick with RequestsLibrary:**
 - Simple sequential API testing
@@ -246,7 +246,7 @@ Handle Request Failures
 Library    robot_parallel_requests
 
 # High concurrency: 20 worker threads
-Library    robot_parallel_requestsworker_count=20
+Library    robot_parallel_requests    worker_count=20
 ```
 
 ## Use Cases
@@ -258,9 +258,9 @@ Queue 101 requests (where the 101st should fail) to test error handling and rate
 *** Test Cases ***
 Test Rate Limit With Bulk Requests
     Parallel Create Session
-    :FOR    ${i}    IN RANGE    101
+    FOR    ${i}    IN RANGE    101
         ${id}=    Parallel Queue Request    POST    /api/favorite-restaurants    json={"name": "Restaurant ${i}"}
-    \    ...
+    END
     
     Parallel Wait For All Requests    timeout=60
     
@@ -278,17 +278,17 @@ Fetch Multiple User Profiles
     @{user_ids}=    Create List    1    2    3    4    5
     @{response_ids}=    Create List
     
-    :FOR    ${user_id}    IN    @{user_ids}
+    FOR    ${user_id}    IN    @{user_ids}
         ${id}=    Parallel Queue Request    GET    /users/${user_id}
         Append To List    @{response_ids}    ${id}
-    \
+    END
     
     Parallel Wait For All Requests    timeout=30
     
-    :FOR    ${id}    IN    @{response_ids}
+    FOR    ${id}    IN    @{response_ids}
         ${resp}=    Parallel Get Response Object    ${id}
         Should Be Equal    ${resp.status_code}    200
-    \
+    END
     
     Parallel Shutdown
 ```
@@ -343,7 +343,6 @@ robot examples/parallel_requests.robot
 
 ## Contributing
 
-Contributions are welcome! To get started:
 Contributions are welcome! For public/open-source contributions we recommend the
 fork → pull request workflow (standard GitHub flow). This keeps the main
 repository protected while making it easy for outside contributors to propose
