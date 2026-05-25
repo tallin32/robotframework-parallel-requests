@@ -1,0 +1,22 @@
+site_name: robotframework-parallel-requests
+site_description: Parallel HTTP requests for Robot Framework
+site_url: https://tallin32.github.io/robotframework-parallel-requests/
+repo_url: https://github.com/tallin32/robotframework-parallel-requests
+repo_name: tallin32/robotframework-parallel-requests
+
+theme:
+  name: material
+
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - Keywords: keywords.md
+  - Release Process: release.md
+  - Changelog: changelog.md
+
+markdown_extensions:
+  - admonition
+  - codehilite
+  - tables
+  - toc:
+      permalink: true
