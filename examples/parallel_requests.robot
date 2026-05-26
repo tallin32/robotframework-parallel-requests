@@ -8,6 +8,7 @@ Batch Retrieve All Responses
     ${responses}=    Parallel Wait For All And Get Responses    timeout=30
     # responses is a list of httpx.Response or Exception objects in submission order
     :FOR    ${resp}    IN    @{responses}
+    LOG    ${resp.json()}
         Should Be Equal As Integers    ${resp.status_code}    200
     Parallel Shutdown
     # This pattern is useful for rate limit or bulk operation tests

@@ -238,20 +238,25 @@ class ParallelRequests:
     
     # Rate Limiting & Retry Configuration
     
-    def Parallel_Set_Rate_Limit(self, requests_per_second: float, burst_size: Optional[int] = None):
-        """Parallel Set Rate Limit    requests_per_second    burst_size=None
+    def Parallel_Set_Rate_Limit(self, requests: float, per: str = "second", burst_size: Optional[int] = None):
+        """Parallel Set Rate Limit    requests    per="second"    burst_size=None
         
         Configure rate limiting for queued requests using token bucket algorithm.
         
         Args:
-            requests_per_second: Maximum requests per second (e.g., 1.75 for 105 req/min)
-            burst_size: Maximum burst size (defaults to requests_per_second + 1)
+            requests: Maximum requests in the selected unit (e.g., 1.75 per second, 105 per minute)
+            per: Time unit for rate limiting (e.g., "second", "minute")
+            burst_size: Maximum burst size (defaults to requests + 1)
         
         Example usage:
             Parallel Set Rate Limit    1.75
             Parallel Set Rate Limit    1.75    burst_size=10
+            Parallel Set Rate Limit    105    per="minute"
         """
-        self.rate_limiter = TokenBucket(rate=requests_per_second, burst_size=burst_size)
+        # Calculate rate in tokens per second based on 'per' unit
+        unit_multipliers = {    "second": 1, "minute": 1/60, "hour": 1/3600}
+        if per not in unit_multipliers: raise ValueError(f"Unsupported time unit for rate limiting: {per}")
+        self.rate_limiter = TokenBucket(rate=requests * unit_multipliers[per]    , burst_size=burst_size)
     
     def Parallel_Clear_Rate_Limit(self):
         """Parallel Clear Rate Limit
@@ -305,7 +310,7 @@ class ParallelRequests:
             - avg_duration: Average request duration in seconds
             - min_duration: Minimum request duration
             - max_duration: Maximum request duration
-            - requests_per_second: Actual request rate
+            - requests_per_second: Actual request rate in requests per second
             - status_code_counts: Dict of status code frequencies
         
         Example usage:

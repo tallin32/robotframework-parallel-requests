@@ -129,7 +129,7 @@ def test_retry_policy_success_after_retries(monkeypatch):
 def test_rate_limiter_enforces_minimum_elapsed_time():
     lib = ParallelRequests(worker_count=2)
     # Set rate to 2 req/sec, burst_size=1 so after first immediate, remaining 2 must space out ~1s total
-    lib.Parallel_Set_Rate_Limit(requests_per_second=2.0, burst_size=1)
+    lib.Parallel_Set_Rate_Limit(requests=2.0, burst_size=1)
 
     with respx.mock:
         respx.get("https://example.org/a").mock(return_value=httpx.Response(200))
