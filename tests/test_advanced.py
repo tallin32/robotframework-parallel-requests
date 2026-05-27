@@ -149,6 +149,36 @@ def test_rate_limiter_enforces_minimum_elapsed_time():
     lib.Parallel_Shutdown()
 
 
+def test_rate_limiter_applies_on_execution_not_enqueue():
+    lib = ParallelRequests(worker_count=1)
+    lib.Parallel_Set_Rate_Limit(requests=1.0, burst_size=1)
+
+    with respx.mock:
+        respx.get("https://example.org/qa").mock(return_value=httpx.Response(200))
+        respx.get("https://example.org/qb").mock(return_value=httpx.Response(200))
+        respx.get("https://example.org/qc").mock(return_value=httpx.Response(200))
+
+        enqueue_start = time.time()
+        rid1 = lib.Parallel_GET("https://example.org/qa")
+        rid2 = lib.Parallel_GET("https://example.org/qb")
+        rid3 = lib.Parallel_GET("https://example.org/qc")
+        enqueue_elapsed = time.time() - enqueue_start
+
+        # Queuing should stay fast; throttling should happen in worker execution.
+        assert enqueue_elapsed < 0.5
+
+        exec_start = time.time()
+        lib.Parallel_Wait_For_All_Requests(timeout=10)
+        exec_elapsed = time.time() - exec_start
+
+        assert exec_elapsed >= 1.6
+        assert lib.Parallel_Get_Response_Status(rid1) == 200
+        assert lib.Parallel_Get_Response_Status(rid2) == 200
+        assert lib.Parallel_Get_Response_Status(rid3) == 200
+
+    lib.Parallel_Shutdown()
+
+
 def test_metrics_summary_counts_success_and_failure():
     lib = ParallelRequests(worker_count=2)
     with respx.mock:

@@ -1,6 +1,7 @@
 import re
 from pathlib import Path
 from typing import Optional, Any, Dict
+from robot.api import logger    
 
 try:
     from importlib.metadata import PackageNotFoundError, version as get_installed_version
@@ -63,6 +64,7 @@ class ParallelRequests:
         """
         session = Session(alias=alias, base_url=base_url, headers=headers or {})
         self.sessions[alias] = session
+        logger.info(f"Session '{alias}' created with base_url='{base_url}' and headers={headers}")  
 
     def Parallel_Queue_Request(self, method: str, url: str, session: Optional[str] = None, id: Optional[str] = None, **kwargs) -> str:
         """Parallel Queue Request    method    url    session=None    id=None    kwargs
@@ -80,10 +82,6 @@ class ParallelRequests:
             Parallel Queue Request    GET    /users    session=api
             Parallel Queue Request    POST   /users    json={'name': 'John'}    headers={'X-API-Key': 'secret'}
         """
-        # Apply rate limiting if configured
-        if self.rate_limiter:
-            self.rate_limiter.acquire()
-        
         # Resolve session if provided
         if session:
             if session not in self.sessions:
@@ -97,6 +95,10 @@ class ParallelRequests:
         task = RequestTask(method=method, url=url, kwargs=kwargs)
         if id:
             task.id = id
+
+        # Rate limiting is enforced by workers at execution time, not enqueue time.
+        if self.rate_limiter:
+            task.rate_limiter = self.rate_limiter
         
         # Apply retry policy if configured
         if self.retry_policy:

@@ -25,6 +25,9 @@ class WorkerPool:
         return task.id
 
     def _run_task(self, task: RequestTask):
+        if task.rate_limiter:
+            task.rate_limiter.acquire()
+
         start_time = time.time()
         metric = RequestMetric(
             request_id=task.id,
