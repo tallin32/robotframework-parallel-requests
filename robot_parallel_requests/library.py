@@ -92,7 +92,7 @@ class ParallelRequests:
             request_headers = kwargs.get('headers', {})
             kwargs['headers'] = sess.merge_headers(request_headers)
         
-        task = RequestTask(method=method, url=url, kwargs=kwargs)
+        task = RequestTask(method=method, url=url, kwargs=kwargs, session_name=session)
         if id:
             task.id = id
 
@@ -113,20 +113,29 @@ class ParallelRequests:
         return
 
 
+    def _wait_pending_and_warn(self, timeout: Optional[float] = None) -> list:
+        completed, incomplete, batch_ids = self.worker.wait_all(timeout=timeout)
+        if incomplete > 0:
+            total = completed + incomplete
+            logger.warn(
+                f"{incomplete} of {total} pending requests did not complete within "
+                f"timeout={timeout!r}. Consider increasing the timeout."
+            )
+        return batch_ids
+
     def Parallel_Wait_For_All_Requests(self, timeout: Optional[float] = None):
         """Parallel Wait For All Requests    timeout=None
 
         Wait for all queued requests to finish (optionally with timeout seconds)."""
-        self.worker.wait_all(timeout=timeout)
+        self._wait_pending_and_warn(timeout=timeout)
 
     def Parallel_Wait_For_All_And_Get_Responses(self, timeout: Optional[float] = None):
         """Parallel Wait For All And Get Responses    timeout=None
 
         Wait for all queued requests to finish (optionally with timeout seconds) and return a list of response objects (or exceptions) in submission order.
         """
-        self.worker.wait_all(timeout=timeout)
-        # Return all responses in submission order
-        return [self.worker.get_response(fid) for fid in self.worker._futures.keys()]
+        batch_ids = self._wait_pending_and_warn(timeout=timeout)
+        return self.worker.get_responses_in_order(batch_ids)
 
     def Parallel_Get_Response_Object(self, id: str) -> Any:
         """Parallel Get Response Object    id
@@ -255,10 +264,19 @@ class ParallelRequests:
             Parallel Set Rate Limit    1.75    burst_size=10
             Parallel Set Rate Limit    105    per="minute"
         """
+        if requests <= 0:
+            raise ValueError(f"Rate limit requests must be positive, got: {requests}")
+
         # Calculate rate in tokens per second based on 'per' unit
-        unit_multipliers = {    "second": 1, "minute": 1/60, "hour": 1/3600}
-        if per not in unit_multipliers: raise ValueError(f"Unsupported time unit for rate limiting: {per}")
-        self.rate_limiter = TokenBucket(rate=requests * unit_multipliers[per]    , burst_size=burst_size)
+        unit_multipliers = {"second": 1, "minute": 1/60, "hour": 1/3600}
+        if per not in unit_multipliers:
+            raise ValueError(f"Unsupported time unit for rate limiting: {per}")
+
+        if burst_size is None:
+            burst_size = max(1, int(requests) + 1)
+
+        rate = requests * unit_multipliers[per]
+        self.rate_limiter = TokenBucket(rate=rate, burst_size=burst_size)
     
     def Parallel_Clear_Rate_Limit(self):
         """Parallel Clear Rate Limit
@@ -307,7 +325,7 @@ class ParallelRequests:
         
         Returns dict with:
             - total_requests: Total number of requests
-            - successful_requests: Requests with 2xx status
+            - successful_requests: Requests with 2xx or 3xx status
             - failed_requests: Requests with errors or 4xx/5xx status
             - avg_duration: Average request duration in seconds
             - min_duration: Minimum request duration

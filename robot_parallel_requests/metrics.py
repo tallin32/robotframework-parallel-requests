@@ -14,6 +14,7 @@ class RequestMetric:
     status_code: Optional[int] = None
     duration: Optional[float] = None  # seconds
     timestamp: float = field(default_factory=time.time)
+    completed_at: Optional[float] = None
     error: Optional[str] = None
     retries: int = 0
 
@@ -49,13 +50,22 @@ class MetricsCollector:
                     'requests_per_second': 0.0,
                 }
             
-            successful = [m for m in self._metrics if m.status_code and 200 <= m.status_code < 300]
-            failed = [m for m in self._metrics if m.error or (m.status_code and m.status_code >= 400)]
+            successful = [
+                m for m in self._metrics
+                if m.status_code and 200 <= m.status_code < 400
+            ]
+            failed = [
+                m for m in self._metrics
+                if m.error or (m.status_code and m.status_code >= 400)
+            ]
             durations = [m.duration for m in self._metrics if m.duration is not None]
             
-            # Calculate request rate
-            if len(self._metrics) > 1:
-                time_span = max(m.timestamp for m in self._metrics) - min(m.timestamp for m in self._metrics)
+            # Calculate request rate using start-to-last-completion span
+            completed_times = [
+                m.completed_at for m in self._metrics if m.completed_at is not None
+            ]
+            if len(self._metrics) > 1 and completed_times:
+                time_span = max(completed_times) - min(m.timestamp for m in self._metrics)
                 requests_per_second = len(self._metrics) / time_span if time_span > 0 else 0.0
             else:
                 requests_per_second = 0.0
