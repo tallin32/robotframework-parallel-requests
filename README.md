@@ -114,7 +114,7 @@ Access Response Object
 | **Parallel/Async Requests** | ✅ Native ThreadPoolExecutor | ❌ Sequential only |
 | **Queue Multiple Requests** | ✅ Yes, with ID-based retrieval | ❌ No |
 | **Bulk Operations** | ✅ Optimized | ❌ Requires loops + waits |
-| **Rate Limiting Tests** | ✅ Workable, with forthcoming enhancements | ⚠️ Difficult/slow |
+| **Rate Limiting Tests** | ✅ Token bucket with per-send throttling | ⚠️ Difficult/slow |
 | **API Compatibility** | Similar keywords (with `Parallel ` prefix) | —  |
 | **Direct Response Objects** | ✅ `httpx.Response` access | ✅ `requests.Response` access |
 | **Session Management** | ✅ Named sessions | ✅ Named sessions |
@@ -179,6 +179,18 @@ Handle Request Failures
 **Timeout Handling:**
 - Always set explicit timeouts in `Parallel Wait For All Requests` to prevent hanging tests.
 - Individual request timeouts (via `timeout=` parameter in `Queue Request`) affect only that request.
+- If the wait timeout expires, the keyword logs a warning but does not fail; check responses before assuming all requests finished.
+
+**Request IDs:**
+- Each queued request must use a unique `id` when you provide a custom value. Reusing an ID raises `ValueError`.
+
+**Batch waits:**
+- `Parallel Wait For All And Get Responses` returns only the requests queued since the previous wait in the same test.
+
+**Rate limiting:**
+- Throttling is enforced when requests are sent, not when they are queued.
+- Default burst size is `requests + 1` (e.g. `105 per="minute"` → burst `106`).
+- Retries consume rate-limit tokens on each HTTP attempt.
 
 **If you override library scope:**
 - Use `Suite Teardown` to call shutdown/cleanup keywords.
@@ -200,14 +212,18 @@ Handle Request Failures
 **Parallel Queue Request**
 - **Arguments:** `method` (str), `url` (str), `id` (str, optional), `**kwargs` (headers, json, data, params, etc.)
 - **Returns:** Response ID (string)
-- **Description:** Queue a request to be processed by the worker pool. Returns a response ID for later retrieval.
+- **Description:** Queue a request to be processed by the worker pool. Returns a response ID for later retrieval. Custom `id` values must be unique within the test instance.
 
 **Parallel Start Workers**
 - **Description:** Start worker pool (workers are ready on init; this is a no-op in MVP).
 
 **Parallel Wait For All Requests**
 - **Arguments:** `timeout` (float, optional, seconds)
-- **Description:** Block until all queued requests complete or timeout expires.
+- **Description:** Block until all requests queued since the last wait complete or the timeout expires. Logs a warning if any requests remain incomplete.
+
+**Parallel Wait For All And Get Responses**
+- **Arguments:** `timeout` (float, optional, seconds)
+- **Returns:** List of `httpx.Response` or Exception objects in submission order for the current pending batch only.
 
 ### Response Retrieval
 
@@ -233,6 +249,17 @@ Handle Request Failures
 **Parallel Set Worker Count**
 - **Arguments:** `count` (int)
 - **Description:** Adjust the number of concurrent worker threads.
+
+**Parallel Set Rate Limit**
+- **Arguments:** `requests` (float), `per` (str, default `"second"`), `burst_size` (int, optional)
+- **Description:** Configure client-side token-bucket rate limiting. Default burst size is `requests + 1`.
+
+**Parallel Set Retry Policy**
+- **Arguments:** `max_retries`, `backoff_factor`, `retry_statuses`
+- **Description:** Configure exponential backoff retries for selected HTTP status codes.
+
+**Parallel Get Metrics**
+- **Description:** Return aggregated request metrics including retry counts and requests per second.
 
 ## Library Initialization
 
@@ -410,7 +437,7 @@ Automated releases are driven by Git tags and a GitHub Actions workflow (`publis
 | Final | `v0.1.0` | Stable release consumers get by default |
 | Release Candidate | `v0.1.0rc1` | Treated as prerelease; published to PyPI & TestPyPI |
 | Beta / Alpha | `v0.1.0b1`, `v0.1.0a1` | Published to TestPyPI only |
-| Dev Snapshot | `v0.1.0.dev1` | Iterative build, TestPyPI only |
+| Dev Snapshot | `v0.1.0.dev2` | Iterative build, TestPyPI only |
 
 ### Publishing Matrix
 
@@ -460,7 +487,7 @@ pip install robotframework-parallel-requests==0.1.0rc1
 ### TestPyPI Validation
 
 ```bash
-pip install -i https://test.pypi.org/simple robotframework-parallel-requests==0.1.0b1 --extra-index-url https://pypi.org/simple
+pip install -i https://test.pypi.org/simple robotframework-parallel-requests==0.1.0.dev2 --extra-index-url https://pypi.org/simple
 ```
 
 ### Patch / Hotfix

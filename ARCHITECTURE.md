@@ -37,17 +37,18 @@ class TransportBase(ABC):
 ### 4. WorkerPool (`worker.py`)
 
 ThreadPoolExecutor-based request dispatcher:
-- Accepts `RequestTask` objects via `submit()`
+- Accepts `RequestTask` objects via `submit()` and tracks a pending batch per wait cycle
 - Dispatches each task to a worker thread via the transport
+- Applies client-side rate limiting at HTTP send time (including per retry attempt)
 - Stores responses/exceptions in `ResponseStore`
-- Provides `wait_all(timeout)` to block until all tasks complete
-- Tracks futures for robust timeout handling
+- Provides `wait_all(timeout)` using `concurrent.futures.wait()` for correct shared timeout semantics
+- Rejects duplicate request IDs at submit time
 
 **Key flow:**
-1. `submit(task)` → add task to executor → return task.id
-2. Worker thread calls `transport.send(task)` → returns `httpx.Response`
+1. `submit(task)` → append to pending batch → add task to executor → return task.id
+2. Worker thread acquires rate-limit token (if configured), then calls `transport.send(task)`
 3. Response stored in `_store` under task.id
-4. `wait_all()` blocks on all futures or timeout
+4. `wait_all()` waits on the current pending batch, clears pending IDs, and returns batch metadata
 
 ### 5. Robot Library (`library.py`)
 
@@ -123,25 +124,25 @@ def Parallel_New_Keyword(self, arg1, arg2):
 2. Update `get_keyword_names()` if needed.
 2. Update library documentation or keyword registry if needed.
 
-## MVP vs Future Enhancements
+## Current Capabilities vs Future Enhancements
 
-### MVP (Current)
+### Current
 - ThreadPool + synchronous httpx transport
 - Parallel (`Parallel_`) prefixed keywords
 - Response retrieval (status, body, JSON, raw object)
 - Worker count configuration
-- Basic session management
-- Fail-fast validation for unknown session aliases
-
-### v1.1
-- Rate limiting (tokens/sec, burst size)
-- Retry/backoff policies (tenacity integration)
-- Metrics (request count, latency histogram)
+- Session management with base URL resolution and header merging
+- Fail-fast validation for unknown session aliases and duplicate request IDs
+- Token-bucket rate limiting enforced at HTTP send time
+- Retry policy with exponential backoff
+- Metrics collection (counts, durations, retry counts, RPS)
 
 ### Later
 - Async httpx transport (high concurrency)
 - Per-session queuing and management
 - Advanced session options (cookies, auth, proxies)
+- Circuit breaker / adaptive backoff
+- Structured logging / tracing hooks
 
 ## Production Scope (Current Release)
 
@@ -161,4 +162,6 @@ def Parallel_New_Keyword(self, arg1, arg2):
 
 1. **Event loop in async context:** If Robot tests run in an existing asyncio event loop, an async transport would need special handling. For now, ThreadPool + sync is safe.
 2. **Per-request error details:** Errors are captured and stored; test author can retrieve raw exception from `Get Response Object`.
-3. **Session isolation:** MVP doesn't isolate sessions per test; shared global pool. Can be enhanced in future.
+3. **Session isolation:** Sessions share a global worker pool within a test instance. Can be enhanced in future.
+4. **Wait timeout:** `Parallel Wait For All Requests` logs a warning but does not fail the keyword when the timeout expires; incomplete requests may still finish in the background.
+5. **No request cancellation:** Timed-out or abandoned requests are not cancelled; worker threads continue until the HTTP call completes.
