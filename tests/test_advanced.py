@@ -123,6 +123,11 @@ def test_retry_policy_success_after_retries(monkeypatch):
         assert call_count["n"] == 3  # 2 retries then success
         # Expect two sleep calls (attempt 0 and 1)
         assert len(slept) == 2
+
+        metrics = lib.Parallel_Get_Metrics()
+        assert metrics["total_requests"] == 1
+        recorded = lib.metrics.get_metrics()[0]
+        assert recorded.retries == 2
     lib.Parallel_Shutdown()
 
 
@@ -237,4 +242,170 @@ def test_set_worker_count_recreates_pool_and_keeps_metrics():
 def test_shutdown_is_idempotent():
     lib = ParallelRequests(worker_count=1)
     lib.Parallel_Shutdown()
+    lib.Parallel_Shutdown()
+
+
+def test_wait_all_completes_serial_requests_with_shared_timeout():
+    lib = ParallelRequests(worker_count=1)
+
+    with respx.mock:
+        def slow_response(request):
+            time.sleep(0.5)
+            return httpx.Response(200)
+        respx.get("https://example.org/slow").mock(side_effect=slow_response)
+
+        for _ in range(3):
+            lib.Parallel_GET("https://example.org/slow")
+
+        lib.Parallel_Wait_For_All_Requests(timeout=5)
+        metrics = lib.Parallel_Get_Metrics()
+        assert metrics["total_requests"] == 3
+
+    lib.Parallel_Shutdown()
+
+
+def test_wait_all_logs_warning_on_timeout(monkeypatch):
+    lib = ParallelRequests(worker_count=1)
+    warnings = []
+
+    import robot_parallel_requests.library as library_module
+
+    def capture_warn(message):
+        warnings.append(message)
+
+    monkeypatch.setattr(library_module.logger, "warn", capture_warn)
+
+    with respx.mock:
+        def slow_response(request):
+            time.sleep(2)
+            return httpx.Response(200)
+        respx.get("https://example.org/slow").mock(side_effect=slow_response)
+
+        for _ in range(3):
+            lib.Parallel_GET("https://example.org/slow")
+
+        lib.Parallel_Wait_For_All_Requests(timeout=1)
+
+    assert warnings
+    assert "did not complete within timeout" in warnings[0]
+
+    lib.Parallel_Shutdown()
+
+
+def test_duplicate_request_id_raises():
+    lib = ParallelRequests(worker_count=2)
+
+    with respx.mock:
+        respx.get("https://example.org/a").mock(return_value=httpx.Response(200, text="a"))
+        lib.Parallel_GET("https://example.org/a", id="dup-id")
+
+        with pytest.raises(ValueError, match="Duplicate request id"):
+            lib.Parallel_GET("https://example.org/a", id="dup-id")
+
+    lib.Parallel_Shutdown()
+
+
+def test_batch_response_retrieval_is_per_wait_batch():
+    lib = ParallelRequests(worker_count=3)
+
+    with respx.mock:
+        respx.get("https://example.org/b1").mock(return_value=httpx.Response(200, json={"batch": 1}))
+        respx.get("https://example.org/b2").mock(return_value=httpx.Response(200, json={"batch": 2}))
+        respx.get("https://example.org/b3").mock(return_value=httpx.Response(200, json={"batch": 3}))
+        respx.get("https://example.org/b4").mock(return_value=httpx.Response(200, json={"batch": 4}))
+
+        lib.Parallel_GET("https://example.org/b1")
+        batch1 = lib.Parallel_Wait_For_All_And_Get_Responses(timeout=5)
+        assert len(batch1) == 1
+        assert batch1[0].json()["batch"] == 1
+
+        lib.Parallel_GET("https://example.org/b2")
+        lib.Parallel_GET("https://example.org/b3")
+        lib.Parallel_GET("https://example.org/b4")
+        batch2 = lib.Parallel_Wait_For_All_And_Get_Responses(timeout=5)
+        assert len(batch2) == 3
+        assert [r.json()["batch"] for r in batch2] == [2, 3, 4]
+
+    lib.Parallel_Shutdown()
+
+
+def test_rate_limit_burst_default_uses_requests_not_converted_rate():
+    lib = ParallelRequests()
+    lib.Parallel_Set_Rate_Limit(requests=105, per="minute")
+    assert lib.rate_limiter.burst_size == 106
+    lib.Parallel_Shutdown()
+
+
+def test_rate_limit_rejects_non_positive_requests():
+    lib = ParallelRequests()
+    with pytest.raises(ValueError, match="must be positive"):
+        lib.Parallel_Set_Rate_Limit(0)
+    lib.Parallel_Shutdown()
+
+
+def test_rate_limit_applies_to_each_retry_attempt(monkeypatch):
+    lib = ParallelRequests(worker_count=1)
+    lib.Parallel_Set_Rate_Limit(requests=2.0, burst_size=1)
+    lib.Parallel_Set_Retry_Policy(max_retries=2, backoff_factor=2.0, retry_statuses="429")
+
+    call_count = {"n": 0}
+
+    with respx.mock:
+        def responder(request):
+            call_count["n"] += 1
+            if call_count["n"] < 3:
+                return httpx.Response(429)
+            return httpx.Response(200)
+
+        respx.get("https://example.org/retry-rate").mock(side_effect=responder)
+
+        import robot_parallel_requests.retry as retry_module
+
+        monkeypatch.setattr(retry_module.time, "sleep", lambda _t: None)
+
+        start = time.time()
+        rid = lib.Parallel_GET("https://example.org/retry-rate")
+        lib.Parallel_Wait_For_All_Requests(timeout=10)
+        elapsed = time.time() - start
+
+        assert lib.Parallel_Get_Response_Status(rid) == 200
+        assert call_count["n"] == 3
+        # Three throttled sends at 2 req/s with burst 1 -> ~1s minimum spacing
+        assert elapsed >= 0.9
+
+    lib.Parallel_Shutdown()
+
+
+def test_metrics_counts_3xx_as_successful():
+    lib = ParallelRequests(worker_count=1)
+
+    with respx.mock:
+        respx.get("https://example.org/redirect").mock(return_value=httpx.Response(302))
+        lib.Parallel_GET("https://example.org/redirect")
+        lib.Parallel_Wait_For_All_Requests(timeout=5)
+
+        metrics = lib.Parallel_Get_Metrics()
+        assert metrics["successful_requests"] == 1
+        assert metrics["failed_requests"] == 0
+
+    lib.Parallel_Shutdown()
+
+
+def test_metrics_requests_per_second_uses_completion_span():
+    lib = ParallelRequests(worker_count=1)
+
+    with respx.mock:
+        def slow_response(request):
+            time.sleep(0.5)
+            return httpx.Response(200)
+
+        respx.get("https://example.org/rps").mock(side_effect=slow_response)
+        lib.Parallel_GET("https://example.org/rps")
+        lib.Parallel_GET("https://example.org/rps")
+        lib.Parallel_Wait_For_All_Requests(timeout=5)
+
+        metrics = lib.Parallel_Get_Metrics()
+        # Two serial 0.5s requests -> ~2 requests over ~1s completion span
+        assert 1.5 <= metrics["requests_per_second"] <= 3.0
+
     lib.Parallel_Shutdown()

@@ -7,16 +7,21 @@ from typing import Optional
 class TokenBucket:
     """Token bucket rate limiter for controlling request rates."""
     
-    def __init__(self, rate: float, burst_size: Optional[int] = None):
+    def __init__(self, rate: float, burst_size: int):
         """
         Initialize token bucket.
         
         Args:
             rate: Tokens per second (e.g., 1.75 for 105 requests/minute)
-            burst_size: Maximum tokens that can accumulate (defaults to rate)
+            burst_size: Maximum tokens that can accumulate
         """
+        if rate <= 0:
+            raise ValueError(f"Rate must be positive, got: {rate}")
+        if burst_size <= 0:
+            raise ValueError(f"Burst size must be positive, got: {burst_size}")
+
         self.rate = rate
-        self.burst_size = burst_size or int(rate) + 1
+        self.burst_size = burst_size
         self.tokens = float(self.burst_size)
         self.last_update = time.time()
         self.lock = threading.Lock()
@@ -33,6 +38,9 @@ class TokenBucket:
         Returns:
             True if tokens acquired, False otherwise
         """
+        if self.rate <= 0:
+            raise ValueError("Cannot acquire tokens when rate is zero or negative")
+
         deadline = None if timeout is None else time.time() + timeout
         
         while True:

@@ -1,7 +1,5 @@
-from concurrent.futures import ThreadPoolExecutor, Future
-from queue import Queue, Empty
-from threading import Event
-from typing import Optional
+from concurrent.futures import ThreadPoolExecutor, Future, wait, ALL_COMPLETED
+from typing import Optional, List, Tuple
 import time
 
 from .tasks import RequestTask
@@ -17,17 +15,24 @@ class WorkerPool:
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
         self._store = ResponseStore()
         self._futures: dict[str, Future] = {}
+        self._pending_ids: List[str] = []
         self.metrics_collector = metrics_collector
 
     def submit(self, task: RequestTask) -> str:
+        if task.id in self._futures or self._store.has(task.id):
+            raise ValueError(f"Duplicate request id: {task.id}")
+
         future = self._executor.submit(self._run_task, task)
         self._futures[task.id] = future
+        self._pending_ids.append(task.id)
         return task.id
 
-    def _run_task(self, task: RequestTask):
+    def _send_once(self, task: RequestTask):
         if task.rate_limiter:
             task.rate_limiter.acquire()
+        return self.transport.send(task)
 
+    def _run_task(self, task: RequestTask):
         start_time = time.time()
         metric = RequestMetric(
             request_id=task.id,
@@ -35,52 +40,63 @@ class WorkerPool:
             url=task.url,
             timestamp=start_time
         )
-        
+        retry_count = 0
+
         try:
-            # Apply retry policy if configured
             if task.retry_policy:
-                resp = retry_with_backoff(self.transport.send, task.retry_policy, task)
+                resp, retry_count = retry_with_backoff(
+                    self._send_once, task.retry_policy, task
+                )
             else:
-                resp = self.transport.send(task)
-            
+                resp = self._send_once(task)
+
             duration = time.time() - start_time
             metric.duration = duration
-            
+            metric.retries = retry_count
+
             if hasattr(resp, 'status_code'):
                 metric.status_code = resp.status_code
-            
+
             self._store.set_response(task.id, resp)
-            
+
         except Exception as exc:
             duration = time.time() - start_time
             metric.duration = duration
+            metric.retries = retry_count
             metric.error = str(exc)
             self._store.set_response(task.id, exc)
-        
+
         finally:
+            metric.completed_at = time.time()
             if self.metrics_collector:
                 self.metrics_collector.record_request(metric)
 
     def get_response(self, id: str):
         return self._store.get(id)
 
-    def wait_all(self, timeout: Optional[float] = None):
-        # Robot Framework may pass timeout as a string; convert if needed
+    def get_responses_in_order(self, ids: List[str]) -> list:
+        return [self._store.get(request_id) for request_id in ids]
+
+    def wait_all(self, timeout: Optional[float] = None) -> Tuple[int, int, List[str]]:
+        """Wait for pending requests. Returns (completed_count, incomplete_count, batch_ids)."""
         if timeout is not None and not isinstance(timeout, float):
             try:
                 timeout = float(timeout)
             except Exception:
                 raise ValueError(f"Timeout must be a float or convertible to float, got: {timeout!r}")
-        start = time.time()
-        for fid, fut in list(self._futures.items()):
-            remaining = None
-            if timeout is not None:
-                elapsed = time.time() - start
-                remaining = max(0, timeout - elapsed)
-            try:
-                fut.result(timeout=remaining)
-            except Exception:
-                pass
+
+        batch_ids = list(self._pending_ids)
+        if not batch_ids:
+            return 0, 0, batch_ids
+
+        pending_futures = [self._futures[request_id] for request_id in batch_ids]
+        done, not_done = wait(pending_futures, timeout=timeout, return_when=ALL_COMPLETED)
+
+        completed_count = len(done)
+        incomplete_count = len(not_done)
+        self._pending_ids.clear()
+
+        return completed_count, incomplete_count, batch_ids
 
     def shutdown(self):
         try:

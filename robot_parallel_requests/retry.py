@@ -1,6 +1,6 @@
 """Retry logic with exponential backoff."""
 import time
-from typing import List, Optional, Callable, Any
+from typing import List, Optional, Callable, Any, Tuple
 from dataclasses import dataclass
 
 
@@ -36,7 +36,7 @@ class RetryPolicy:
         return self.backoff_factor ** attempt
 
 
-def retry_with_backoff(func: Callable, policy: RetryPolicy, *args, **kwargs) -> Any:
+def retry_with_backoff(func: Callable, policy: RetryPolicy, *args, **kwargs) -> Tuple[Any, int]:
     """
     Execute function with retry and exponential backoff.
     
@@ -47,7 +47,7 @@ def retry_with_backoff(func: Callable, policy: RetryPolicy, *args, **kwargs) -> 
         **kwargs: Keyword arguments for func
         
     Returns:
-        Result from successful function execution
+        Tuple of (result, retry_count) where retry_count is the number of re-attempts
         
     Raises:
         Last exception if all retries exhausted
@@ -67,7 +67,7 @@ def retry_with_backoff(func: Callable, policy: RetryPolicy, *args, **kwargs) -> 
                     attempt += 1
                     continue
             
-            return result
+            return result, attempt
             
         except Exception as exc:
             last_exception = exc
