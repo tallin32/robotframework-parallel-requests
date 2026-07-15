@@ -14,8 +14,9 @@ A Robot Framework library for parallelized HTTP requests using `httpx` and Threa
 
 ⚠️ **Beta** — Core functionality stable; API may evolve.
 
-Current production scope uses synchronous `httpx` transport with ThreadPool concurrency.
-Native async transport is planned for a later release.
+Current production scope uses synchronous `httpx` transport with ThreadPool concurrency
+(connection pool sized to worker count; optional HTTP/2). Native async transport is planned
+for a later release.
 
 ## Features
 
@@ -168,18 +169,25 @@ Handle Request Failures
 - This is the most idiomatic and robust approach for libraries managing connections, pools, or other stateful resources.
 
 **Shutdown Handling:**
-- ❌ **Bad:** Calling `Parallel Shutdown` in individual tests causes `cannot schedule new futures after shutdown` errors in subsequent tests.
-- ✅ **Good:** Use `Test Teardown` or rely on the automatic cleanup when the test scope ends.
+- Shutdown runs automatically at end of each test via the library listener.
+- Explicit `Parallel Shutdown` is still safe (idempotent) and useful mid-test.
+- ❌ **Bad:** Calling `Parallel Shutdown` mid-test and then queueing more requests without `Parallel Set Worker Count` to recreate the pool.
 
 **Worker Count:**
 - Default `worker_count=5` is suitable for most scenarios.
-- For high-throughput tests, increase to 10-20.
+- For high-throughput tests, increase to 10-20 (connection pool limits scale with workers).
 - For I/O-heavy operations, ThreadPoolExecutor can handle 50+ safely.
+- Enable `http2=True` (optional `h2` extra) if you want multiplexing to a single origin.
 
 **Timeout Handling:**
 - Always set explicit timeouts in `Parallel Wait For All Requests` to prevent hanging tests.
 - Individual request timeouts (via `timeout=` parameter in `Queue Request`) affect only that request.
-- If the wait timeout expires, the keyword logs a warning but does not fail; check responses before assuming all requests finished.
+- By default, if the wait timeout expires, the keyword logs a warning. Use `fail_on_timeout=${True}` (keyword or library init) to fail the test instead.
+- Not-yet-started futures are cancelled on timeout; in-flight HTTP calls may still finish in the background.
+
+**Sessions:**
+- Omitting `session=` automatically uses the `default` session when one was created.
+- Pass `session=<alias>` for non-default sessions.
 
 **Request IDs:**
 - Each queued request must use a unique `id` when you provide a custom value. Reusing an ID raises `ValueError`.
@@ -201,28 +209,33 @@ Handle Request Failures
 ### Session Management
 
 **Parallel Create Session**
-- **Arguments:** `alias` (str), `base_url` (str, optional), `headers` (dict, optional)
-- **Description:** Create a named session with optional base URL and default headers.
+- **Arguments:** `alias` (str, default `default`), `base_url` (str, optional), `headers` (dict, optional)
+- **Description:** Create a named session with optional base URL and default headers. The `default` session is applied automatically when queue keywords omit `session=`.
 
 **Parallel Shutdown**
-- **Description:** Shutdown worker pool and close transport.
+- **Description:** Shutdown worker pool and close transport (also runs automatically at end of each test).
 
 ### Request Queuing
 
 **Parallel Queue Request**
-- **Arguments:** `method` (str), `url` (str), `id` (str, optional), `**kwargs` (headers, json, data, params, etc.)
+- **Arguments:** `method` (str), `url` (str), `session` (str, optional), `id` (str, optional), `**kwargs` (headers, json, data, params, etc.)
 - **Returns:** Response ID (string)
 - **Description:** Queue a request to be processed by the worker pool. Returns a response ID for later retrieval. Custom `id` values must be unique within the test instance.
+
+**Parallel Queue Many**
+- **Arguments:** `requests` (list of dicts or `[method, url]` pairs), `session` (str, optional)
+- **Returns:** List of response IDs
+- **Description:** Bulk-enqueue many requests and return their IDs in order.
 
 **Parallel Start Workers**
 - **Description:** Start worker pool (workers are ready on init; this is a no-op in MVP).
 
 **Parallel Wait For All Requests**
-- **Arguments:** `timeout` (float, optional, seconds)
-- **Description:** Block until all requests queued since the last wait complete or the timeout expires. Logs a warning if any requests remain incomplete.
+- **Arguments:** `timeout` (float, optional, seconds), `fail_on_timeout` (bool, optional)
+- **Description:** Block until all requests queued since the last wait complete or the timeout expires. Logs a warning (or raises `TimeoutError` when fail-on-timeout is enabled) if any requests remain incomplete.
 
 **Parallel Wait For All And Get Responses**
-- **Arguments:** `timeout` (float, optional, seconds)
+- **Arguments:** `timeout` (float, optional, seconds), `fail_on_timeout` (bool, optional)
 - **Returns:** List of `httpx.Response` or Exception objects in submission order for the current pending batch only.
 
 ### Response Retrieval
@@ -255,8 +268,8 @@ Handle Request Failures
 - **Description:** Configure client-side token-bucket rate limiting. Default burst size is `requests + 1`.
 
 **Parallel Set Retry Policy**
-- **Arguments:** `max_retries`, `backoff_factor`, `retry_statuses`
-- **Description:** Configure exponential backoff retries for selected HTTP status codes.
+- **Arguments:** `max_retries`, `backoff_factor`, `retry_statuses`, `jitter`
+- **Description:** Configure exponential backoff retries for selected HTTP status codes and transport errors (timeouts/network). Jitter is applied to backoff waits.
 
 **Parallel Get Metrics**
 - **Description:** Return aggregated request metrics including retry counts and requests per second.
@@ -265,7 +278,10 @@ Handle Request Failures
 
 ### Arguments
 
-- `worker_count` (int, default: `5`): Number of worker threads in the pool.
+- `worker_count` (int, default: `5`): Number of worker threads in the pool (connection limits follow).
+- `fail_on_timeout` (bool, default: `False`): Make wait keywords raise `TimeoutError` when incomplete.
+- `http2` (bool, default: `False`): Enable HTTP/2 (requires optional `h2` extra).
+- `cancel_pending_on_timeout` (bool, default: `True`): Cancel not-yet-started futures when a wait times out.
 
 ### Examples
 
@@ -273,8 +289,8 @@ Handle Request Failures
 # Default: 5 worker threads
 Library    robot_parallel_requests
 
-# High concurrency: 20 worker threads
-Library    robot_parallel_requests    worker_count=20
+# High concurrency: 20 worker threads, fail waits on timeout
+Library    robot_parallel_requests    worker_count=20    fail_on_timeout=${True}
 ```
 
 ## Use Cases

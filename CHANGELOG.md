@@ -8,7 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Automatic use of the `default` session when `session=` is omitted.
+- `Parallel Queue Many` for bulk enqueue of request specs.
+- Library init options: `fail_on_timeout`, `http2`, `cancel_pending_on_timeout`.
+- Optional `fail_on_timeout` argument on wait keywords (raises `TimeoutError`).
+- Optional HTTP/2 via `http2=True` (extra: `pip install robotframework-parallel-requests[http2]`).
+- Automatic pool/transport shutdown at end of each test via Robot listener.
+- Default retries for transport errors (timeouts/network/protocol) plus backoff jitter.
+
 ### Changed
+- httpx connection pool limits now scale with `worker_count` (and on `Parallel Set Worker Count`).
+- Request duration metrics use `time.perf_counter()`.
+- Unknown or not-ready response IDs raise clear `KeyError` / `LookupError` instead of returning `None`.
+
 ### Fixed
 ### Deprecated
 ### Removed

@@ -31,6 +31,8 @@ class TransportBase(ABC):
 
 **HttpxSyncTransport** is the MVP implementation:
 - Wraps `httpx.Client` for synchronous HTTP requests
+- Sizes `httpx.Limits` from worker count so the pool does not starve workers
+- Optional HTTP/2 via `http2=True`
 - Implements the `TransportBase` interface
 - Can be swapped for an async variant later (`HttpxAsyncTransport` with event loop management)
 
@@ -130,12 +132,16 @@ def Parallel_New_Keyword(self, arg1, arg2):
 - ThreadPool + synchronous httpx transport
 - Parallel (`Parallel_`) prefixed keywords
 - Response retrieval (status, body, JSON, raw object)
-- Worker count configuration
-- Session management with base URL resolution and header merging
+- Worker count configuration with matching connection pool limits
+- Optional HTTP/2 (`http2=True`)
+- Session management with base URL resolution and header merging (`default` session auto-applied)
+- Bulk enqueue via `Parallel Queue Many`
 - Fail-fast validation for unknown session aliases and duplicate request IDs
+- Optional fail-on-timeout waits; cancel not-started futures on timeout
 - Token-bucket rate limiting enforced at HTTP send time
-- Retry policy with exponential backoff
-- Metrics collection (counts, durations, retry counts, RPS)
+- Retry policy with exponential backoff, jitter, and transport-error retries
+- Metrics collection (counts, durations via perf_counter, retry counts, RPS)
+- Automatic shutdown at end of each test via Robot listener
 
 ### Later
 - Async httpx transport (high concurrency)
@@ -162,6 +168,6 @@ def Parallel_New_Keyword(self, arg1, arg2):
 
 1. **Event loop in async context:** If Robot tests run in an existing asyncio event loop, an async transport would need special handling. For now, ThreadPool + sync is safe.
 2. **Per-request error details:** Errors are captured and stored; test author can retrieve raw exception from `Get Response Object`.
-3. **Session isolation:** Sessions share a global worker pool within a test instance. Can be enhanced in future.
-4. **Wait timeout:** `Parallel Wait For All Requests` logs a warning but does not fail the keyword when the timeout expires; incomplete requests may still finish in the background.
-5. **No request cancellation:** Timed-out or abandoned requests are not cancelled; worker threads continue until the HTTP call completes.
+3. **Session isolation:** Sessions share a global worker pool and httpx client within a test instance (URL/header merge only; cookies/auth are not per-session).
+4. **Wait timeout:** By default `Parallel Wait For All Requests` logs a warning when the timeout expires. Pass `fail_on_timeout=${True}` (or library init) to raise. Futures that have not started are cancelled; in-flight HTTP calls may still finish in the background.
+5. **HTTP/1.1 by default:** Parallelism is multi-connection unless `http2=True` is set (requires the optional `h2` package).

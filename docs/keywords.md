@@ -10,6 +10,7 @@ This page is a concise map of the most commonly used keywords.
 ## Queue and execution
 
 - `Parallel Queue Request`
+- `Parallel Queue Many`
 - `Parallel Wait For All Requests`
 - `Parallel Wait For All And Get Responses`
 
@@ -35,16 +36,18 @@ This page is a concise map of the most commonly used keywords.
 - `Parallel Set Worker Count`
 - `Parallel Set Rate Limit` — throttles at HTTP send time; default burst is `requests + 1`
 - `Parallel Clear Rate Limit`
-- `Parallel Set Retry Policy` — each retry attempt respects the active rate limiter
+- `Parallel Set Retry Policy` — status + transport errors; backoff with jitter
 - `Parallel Clear Retry Policy`
 - `Parallel Get Metrics`
 - `Parallel Clear Metrics`
 
 ## Behavioral notes
 
+- Omitting `session=` uses the `default` session when one exists.
 - Custom request `id` values must be unique; duplicates raise `ValueError`.
 - `Parallel Wait For All And Get Responses` returns only the batch queued since the previous wait.
-- `Parallel Wait For All Requests` logs a warning (does not fail) when the timeout expires before all pending requests finish.
+- Wait timeouts warn by default; pass `fail_on_timeout=${True}` (or library init) to raise `TimeoutError`.
+- Shutdown runs automatically at end of each test via the library listener.
 
 For full keyword docs generated from the library, use Robot Libdoc locally:
 
