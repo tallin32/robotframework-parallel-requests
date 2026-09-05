@@ -113,7 +113,7 @@ requirements.txt           - Python dependencies
 - ✅ Retry/backoff policy
 - ✅ Metrics collection
 - ✅ Error capture and handling
-- ✅ 17 passing pytest tests
+- ✅ Pytest suite covering core, advanced, and optimization scenarios
 - ✅ Full documentation
 
 **Future Enhancements (v1.1+):**
@@ -123,4 +123,4 @@ requirements.txt           - Python dependencies
 
 ---
 
-**Last Updated:** May 25, 2026
+**Last Updated:** September 5, 2026

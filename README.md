@@ -14,8 +14,9 @@ A Robot Framework library for parallelized HTTP requests using `httpx` and Threa
 
 ⚠️ **Beta** — Core functionality stable; API may evolve.
 
-Current production scope uses synchronous `httpx` transport with ThreadPool concurrency.
-Native async transport is planned for a later release.
+Current production scope uses synchronous `httpx` transport with ThreadPool concurrency
+(connection pool sized to worker count; optional HTTP/2). Native async transport is planned
+for a later release.
 
 ## Features
 
@@ -43,14 +44,20 @@ Native async transport is planned for a later release.
 
 ## Installation
 
-**From PyPI (when released):**
+**From PyPI:**
 ```bash
 pip install robotframework-parallel-requests
+```
+
+**Optional HTTP/2 support:**
+```bash
+pip install robotframework-parallel-requests[http2]
 ```
 
 **Development/Local Installation:**
 ```bash
 pip install -r requirements.txt
+pip install -e .
 ```
 
 **Prerequisites:**
@@ -114,7 +121,7 @@ Access Response Object
 | **Parallel/Async Requests** | ✅ Native ThreadPoolExecutor | ❌ Sequential only |
 | **Queue Multiple Requests** | ✅ Yes, with ID-based retrieval | ❌ No |
 | **Bulk Operations** | ✅ Optimized | ❌ Requires loops + waits |
-| **Rate Limiting Tests** | ✅ Workable, with forthcoming enhancements | ⚠️ Difficult/slow |
+| **Rate Limiting Tests** | ✅ Token bucket with per-send throttling | ⚠️ Difficult/slow |
 | **API Compatibility** | Similar keywords (with `Parallel ` prefix) | —  |
 | **Direct Response Objects** | ✅ `httpx.Response` access | ✅ `requests.Response` access |
 | **Session Management** | ✅ Named sessions | ✅ Named sessions |
@@ -168,17 +175,36 @@ Handle Request Failures
 - This is the most idiomatic and robust approach for libraries managing connections, pools, or other stateful resources.
 
 **Shutdown Handling:**
-- ❌ **Bad:** Calling `Parallel Shutdown` in individual tests causes `cannot schedule new futures after shutdown` errors in subsequent tests.
-- ✅ **Good:** Use `Test Teardown` or rely on the automatic cleanup when the test scope ends.
+- Shutdown runs automatically at end of each test via the library listener.
+- Explicit `Parallel Shutdown` is still safe (idempotent) and useful mid-test.
+- ❌ **Bad:** Calling `Parallel Shutdown` mid-test and then queueing more requests without `Parallel Set Worker Count` to recreate the pool.
 
 **Worker Count:**
 - Default `worker_count=5` is suitable for most scenarios.
-- For high-throughput tests, increase to 10-20.
+- For high-throughput tests, increase to 10-20 (connection pool limits scale with workers).
 - For I/O-heavy operations, ThreadPoolExecutor can handle 50+ safely.
+- Enable `http2=True` (optional `h2` extra) if you want multiplexing to a single origin.
 
 **Timeout Handling:**
 - Always set explicit timeouts in `Parallel Wait For All Requests` to prevent hanging tests.
 - Individual request timeouts (via `timeout=` parameter in `Queue Request`) affect only that request.
+- By default, if the wait timeout expires, the keyword logs a warning. Use `fail_on_timeout=${True}` (keyword or library init) to fail the test instead.
+- Not-yet-started futures are cancelled on timeout; in-flight HTTP calls may still finish in the background.
+
+**Sessions:**
+- Omitting `session=` automatically uses the `default` session when one was created.
+- Pass `session=<alias>` for non-default sessions.
+
+**Request IDs:**
+- Each queued request must use a unique `id` when you provide a custom value. Reusing an ID raises `ValueError`.
+
+**Batch waits:**
+- `Parallel Wait For All And Get Responses` returns only the requests queued since the previous wait in the same test.
+
+**Rate limiting:**
+- Throttling is enforced when requests are sent, not when they are queued.
+- Default burst size is `requests + 1` (e.g. `105 per="minute"` → burst `106`).
+- Retries consume rate-limit tokens on each HTTP attempt.
 
 **If you override library scope:**
 - Use `Suite Teardown` to call shutdown/cleanup keywords.
@@ -189,25 +215,34 @@ Handle Request Failures
 ### Session Management
 
 **Parallel Create Session**
-- **Arguments:** `alias` (str), `base_url` (str, optional), `headers` (dict, optional)
-- **Description:** Create a named session with optional base URL and default headers.
+- **Arguments:** `alias` (str, default `default`), `base_url` (str, optional), `headers` (dict, optional)
+- **Description:** Create a named session with optional base URL and default headers. The `default` session is applied automatically when queue keywords omit `session=`.
 
 **Parallel Shutdown**
-- **Description:** Shutdown worker pool and close transport.
+- **Description:** Shutdown worker pool and close transport (also runs automatically at end of each test).
 
 ### Request Queuing
 
 **Parallel Queue Request**
-- **Arguments:** `method` (str), `url` (str), `id` (str, optional), `**kwargs` (headers, json, data, params, etc.)
+- **Arguments:** `method` (str), `url` (str), `session` (str, optional), `id` (str, optional), `**kwargs` (headers, json, data, params, etc.)
 - **Returns:** Response ID (string)
-- **Description:** Queue a request to be processed by the worker pool. Returns a response ID for later retrieval.
+- **Description:** Queue a request to be processed by the worker pool. Returns a response ID for later retrieval. Custom `id` values must be unique within the test instance.
+
+**Parallel Queue Many**
+- **Arguments:** `requests` (list of dicts or `[method, url]` pairs), `session` (str, optional)
+- **Returns:** List of response IDs
+- **Description:** Bulk-enqueue many requests and return their IDs in order.
 
 **Parallel Start Workers**
 - **Description:** Start worker pool (workers are ready on init; this is a no-op in MVP).
 
 **Parallel Wait For All Requests**
-- **Arguments:** `timeout` (float, optional, seconds)
-- **Description:** Block until all queued requests complete or timeout expires.
+- **Arguments:** `timeout` (float, optional, seconds), `fail_on_timeout` (bool, optional)
+- **Description:** Block until all requests queued since the last wait complete or the timeout expires. Logs a warning (or raises `TimeoutError` when fail-on-timeout is enabled) if any requests remain incomplete.
+
+**Parallel Wait For All And Get Responses**
+- **Arguments:** `timeout` (float, optional, seconds), `fail_on_timeout` (bool, optional)
+- **Returns:** List of `httpx.Response` or Exception objects in submission order for the current pending batch only.
 
 ### Response Retrieval
 
@@ -234,11 +269,25 @@ Handle Request Failures
 - **Arguments:** `count` (int)
 - **Description:** Adjust the number of concurrent worker threads.
 
+**Parallel Set Rate Limit**
+- **Arguments:** `requests` (float), `per` (str, default `"second"`), `burst_size` (int, optional)
+- **Description:** Configure client-side token-bucket rate limiting. Default burst size is `requests + 1`.
+
+**Parallel Set Retry Policy**
+- **Arguments:** `max_retries`, `backoff_factor`, `retry_statuses`, `jitter`
+- **Description:** Configure exponential backoff retries for selected HTTP status codes and transport errors (timeouts/network). Jitter is applied to backoff waits.
+
+**Parallel Get Metrics**
+- **Description:** Return aggregated request metrics including retry counts and requests per second.
+
 ## Library Initialization
 
 ### Arguments
 
-- `worker_count` (int, default: `5`): Number of worker threads in the pool.
+- `worker_count` (int, default: `5`): Number of worker threads in the pool (connection limits follow).
+- `fail_on_timeout` (bool, default: `False`): Make wait keywords raise `TimeoutError` when incomplete.
+- `http2` (bool, default: `False`): Enable HTTP/2 (requires optional `h2` extra).
+- `cancel_pending_on_timeout` (bool, default: `True`): Cancel not-yet-started futures when a wait times out.
 
 ### Examples
 
@@ -246,8 +295,8 @@ Handle Request Failures
 # Default: 5 worker threads
 Library    robot_parallel_requests
 
-# High concurrency: 20 worker threads
-Library    robot_parallel_requests    worker_count=20
+# High concurrency: 20 worker threads, fail waits on timeout
+Library    robot_parallel_requests    worker_count=20    fail_on_timeout=${True}
 ```
 
 ## Use Cases
@@ -344,60 +393,12 @@ robot examples/parallel_requests.robot
 
 ## Contributing
 
-Contributions are welcome! For public/open-source contributions we recommend the
-fork → pull request workflow (standard GitHub flow). This keeps the main
-repository protected while making it easy for outside contributors to propose
-changes.
-
-Quick contribution steps (fork → PR):
-
-1. Fork the repository on GitHub to your account.
-2. Clone your fork and add the upstream remote:
-
-```powershell
-git clone git@github.com:your-username/robotframework-parallel-requests.git
-cd robotframework-parallel-requests
-git remote add upstream git@github.com:tallin32/robotframework-parallel-requests.git
-```
-
-3. Create a feature branch, make changes, run tests locally:
-
-```powershell
-git checkout -b feature/my-feature
-python -m venv .venv
-. .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-pytest tests/ -v
-```
-
-4. Push your branch to your fork and open a pull request against
-`tallin32/robotframework-parallel-requests:main`:
-
-```powershell
-git push origin feature/my-feature
-# then open a PR on GitHub from your branch into tallin32:main
-```
-
-Maintainer workflow (recommended for this repo):
-
-- Protect the `main` branch and require all changes via Pull Requests.
-- Require at least one reviewer and passing CI before merging.
-
-What to include in a PR:
-
-- A clear summary of the change and why it is needed.
-- Testing notes (how you ran tests locally, what CI should run).
-- If the change affects the public API, include README/docs updates.
-
-If you'd rather be added as a collaborator (for frequent contributors), reach
-out and we can add you as a repo collaborator so you can push branches directly
-— but merges should still go through PRs.
-
-If you want, I can add a `CONTRIBUTING.md` and a PR template to this repo (recommended); I can create those now.
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup,
+branching, and pull request expectations.
 
 ## License
 
-MIT (see LICENSE if present).
+MIT — see [LICENSE](LICENSE).
 
 ## Release Process
 
@@ -410,7 +411,7 @@ Automated releases are driven by Git tags and a GitHub Actions workflow (`publis
 | Final | `v0.1.0` | Stable release consumers get by default |
 | Release Candidate | `v0.1.0rc1` | Treated as prerelease; published to PyPI & TestPyPI |
 | Beta / Alpha | `v0.1.0b1`, `v0.1.0a1` | Published to TestPyPI only |
-| Dev Snapshot | `v0.1.0.dev1` | Iterative build, TestPyPI only |
+| Dev Snapshot | `v0.1.0.dev2` | Iterative build, TestPyPI only |
 
 ### Publishing Matrix
 
@@ -435,11 +436,22 @@ Changes since v0.1.0:
 - abc123 Short commit message (Author)
 ```
 
+### Trusted Publishing
+
+Configure trusted publishers with workflow file **`publish.yml`**.
+
+| Tag type | GitHub environment |
+|----------|--------------------|
+| Dev / alpha / beta | `testpypi` |
+| RC | `testpypi` and `pypi` |
+| Final | `pypi` |
+
 ### Release Steps
 
 1. Update `CHANGELOG.md` (for final/RC).
 2. Run tests: `pytest -v` and `robot examples/parallel_requests.robot`.
-3. Tag and push:
+3. Ensure the matching GitHub environment(s) and PyPI/TestPyPI trusted publishers exist.
+4. Tag and push:
     ```bash
     git tag v0.1.0rc1
     git push origin v0.1.0rc1
@@ -447,7 +459,7 @@ Changes since v0.1.0:
     git tag v0.1.0
     git push origin v0.1.0
     ```
-4. Workflow builds, uploads, generates notes, creates GitHub Release.
+5. Workflow builds, uploads, generates notes, creates GitHub Release.
 
 ### Installing Pre-Releases
 
@@ -460,7 +472,7 @@ pip install robotframework-parallel-requests==0.1.0rc1
 ### TestPyPI Validation
 
 ```bash
-pip install -i https://test.pypi.org/simple robotframework-parallel-requests==0.1.0b1 --extra-index-url https://pypi.org/simple
+pip install -i https://test.pypi.org/simple robotframework-parallel-requests==0.1.0.dev2 --extra-index-url https://pypi.org/simple
 ```
 
 ### Patch / Hotfix

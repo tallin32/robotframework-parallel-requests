@@ -96,11 +96,14 @@ jobs:
 
   create-release:
     needs: [build, publish-testpypi, publish-pypi]
+    # One of the publish jobs is always skipped by tag type. Without a status
+    # function (!cancelled / always), GitHub Actions skips this job too.
     if: |
-      needs.build.result == 'success' && (
-        (needs.build.outputs.release_type != 'final' && needs.publish-testpypi.result == 'success') ||
-        ((needs.build.outputs.release_type == 'final' || needs.build.outputs.release_type == 'rc') && needs.publish-pypi.result == 'success')
-      )
+      !cancelled() &&
+      needs.build.result == 'success' &&
+      (needs.publish-testpypi.result == 'success' || needs.publish-testpypi.result == 'skipped') &&
+      (needs.publish-pypi.result == 'success' || needs.publish-pypi.result == 'skipped') &&
+      (needs.publish-testpypi.result == 'success' || needs.publish-pypi.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: write

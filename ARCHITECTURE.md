@@ -31,23 +31,26 @@ class TransportBase(ABC):
 
 **HttpxSyncTransport** is the MVP implementation:
 - Wraps `httpx.Client` for synchronous HTTP requests
+- Sizes `httpx.Limits` from worker count so the pool does not starve workers
+- Optional HTTP/2 via `http2=True`
 - Implements the `TransportBase` interface
 - Can be swapped for an async variant later (`HttpxAsyncTransport` with event loop management)
 
 ### 4. WorkerPool (`worker.py`)
 
 ThreadPoolExecutor-based request dispatcher:
-- Accepts `RequestTask` objects via `submit()`
+- Accepts `RequestTask` objects via `submit()` and tracks a pending batch per wait cycle
 - Dispatches each task to a worker thread via the transport
+- Applies client-side rate limiting at HTTP send time (including per retry attempt)
 - Stores responses/exceptions in `ResponseStore`
-- Provides `wait_all(timeout)` to block until all tasks complete
-- Tracks futures for robust timeout handling
+- Provides `wait_all(timeout)` using `concurrent.futures.wait()` for correct shared timeout semantics
+- Rejects duplicate request IDs at submit time
 
 **Key flow:**
-1. `submit(task)` → add task to executor → return task.id
-2. Worker thread calls `transport.send(task)` → returns `httpx.Response`
+1. `submit(task)` → append to pending batch → add task to executor → return task.id
+2. Worker thread acquires rate-limit token (if configured), then calls `transport.send(task)`
 3. Response stored in `_store` under task.id
-4. `wait_all()` blocks on all futures or timeout
+4. `wait_all()` waits on the current pending batch, clears pending IDs, and returns batch metadata
 
 ### 5. Robot Library (`library.py`)
 
@@ -123,25 +126,29 @@ def Parallel_New_Keyword(self, arg1, arg2):
 2. Update `get_keyword_names()` if needed.
 2. Update library documentation or keyword registry if needed.
 
-## MVP vs Future Enhancements
+## Current Capabilities vs Future Enhancements
 
-### MVP (Current)
+### Current
 - ThreadPool + synchronous httpx transport
 - Parallel (`Parallel_`) prefixed keywords
 - Response retrieval (status, body, JSON, raw object)
-- Worker count configuration
-- Basic session management
-- Fail-fast validation for unknown session aliases
-
-### v1.1
-- Rate limiting (tokens/sec, burst size)
-- Retry/backoff policies (tenacity integration)
-- Metrics (request count, latency histogram)
+- Worker count configuration with matching connection pool limits
+- Optional HTTP/2 (`http2=True`)
+- Session management with base URL resolution and header merging (`default` session auto-applied)
+- Bulk enqueue via `Parallel Queue Many`
+- Fail-fast validation for unknown session aliases and duplicate request IDs
+- Optional fail-on-timeout waits; cancel not-started futures on timeout
+- Token-bucket rate limiting enforced at HTTP send time
+- Retry policy with exponential backoff, jitter, and transport-error retries
+- Metrics collection (counts, durations via perf_counter, retry counts, RPS)
+- Automatic shutdown at end of each test via Robot listener
 
 ### Later
 - Async httpx transport (high concurrency)
 - Per-session queuing and management
 - Advanced session options (cookies, auth, proxies)
+- Circuit breaker / adaptive backoff
+- Structured logging / tracing hooks
 
 ## Production Scope (Current Release)
 
@@ -161,4 +168,6 @@ def Parallel_New_Keyword(self, arg1, arg2):
 
 1. **Event loop in async context:** If Robot tests run in an existing asyncio event loop, an async transport would need special handling. For now, ThreadPool + sync is safe.
 2. **Per-request error details:** Errors are captured and stored; test author can retrieve raw exception from `Get Response Object`.
-3. **Session isolation:** MVP doesn't isolate sessions per test; shared global pool. Can be enhanced in future.
+3. **Session isolation:** Sessions share a global worker pool and httpx client within a test instance (URL/header merge only; cookies/auth are not per-session).
+4. **Wait timeout:** By default `Parallel Wait For All Requests` logs a warning when the timeout expires. Pass `fail_on_timeout=${True}` (or library init) to raise. Futures that have not started are cancelled; in-flight HTTP calls may still finish in the background.
+5. **HTTP/1.1 by default:** Parallelism is multi-connection unless `http2=True` is set (requires the optional `h2` package).

@@ -33,12 +33,13 @@ class WorkerPool:
         return self.transport.send(task)
 
     def _run_task(self, task: RequestTask):
-        start_time = time.time()
+        start_time = time.perf_counter()
+        wall_start = time.time()
         metric = RequestMetric(
             request_id=task.id,
             method=task.method,
             url=task.url,
-            timestamp=start_time
+            timestamp=wall_start,
         )
         retry_count = 0
 
@@ -50,8 +51,7 @@ class WorkerPool:
             else:
                 resp = self._send_once(task)
 
-            duration = time.time() - start_time
-            metric.duration = duration
+            metric.duration = time.perf_counter() - start_time
             metric.retries = retry_count
 
             if hasattr(resp, 'status_code'):
@@ -60,8 +60,7 @@ class WorkerPool:
             self._store.set_response(task.id, resp)
 
         except Exception as exc:
-            duration = time.time() - start_time
-            metric.duration = duration
+            metric.duration = time.perf_counter() - start_time
             metric.retries = retry_count
             metric.error = str(exc)
             self._store.set_response(task.id, exc)
@@ -72,12 +71,29 @@ class WorkerPool:
                 self.metrics_collector.record_request(metric)
 
     def get_response(self, id: str):
+        if id not in self._futures and not self._store.has(id):
+            raise KeyError(
+                f"Unknown response id: {id!r}. Queue a request first or check the id."
+            )
+        if not self._store.has(id):
+            future = self._futures.get(id)
+            if future is not None and not future.done():
+                raise LookupError(
+                    f"Response for id {id!r} is not ready yet. "
+                    f"Call Parallel Wait For All Requests first."
+                )
+            raise LookupError(f"No response stored for id: {id!r}")
         return self._store.get(id)
 
     def get_responses_in_order(self, ids: List[str]) -> list:
+        # Soft lookup: incomplete timed-out ids may still be absent from the store.
         return [self._store.get(request_id) for request_id in ids]
 
-    def wait_all(self, timeout: Optional[float] = None) -> Tuple[int, int, List[str]]:
+    def wait_all(
+        self,
+        timeout: Optional[float] = None,
+        cancel_pending: bool = True,
+    ) -> Tuple[int, int, List[str]]:
         """Wait for pending requests. Returns (completed_count, incomplete_count, batch_ids)."""
         if timeout is not None and not isinstance(timeout, float):
             try:
@@ -92,6 +108,10 @@ class WorkerPool:
         pending_futures = [self._futures[request_id] for request_id in batch_ids]
         done, not_done = wait(pending_futures, timeout=timeout, return_when=ALL_COMPLETED)
 
+        if cancel_pending and not_done:
+            for future in not_done:
+                future.cancel()
+
         completed_count = len(done)
         incomplete_count = len(not_done)
         self._pending_ids.clear()
@@ -100,7 +120,13 @@ class WorkerPool:
 
     def shutdown(self):
         try:
-            self._executor.shutdown(wait=True)
+            self._executor.shutdown(wait=True, cancel_futures=True)
+        except TypeError:
+            # cancel_futures added in Python 3.9
+            try:
+                self._executor.shutdown(wait=True)
+            except Exception:
+                pass
         except Exception:
             pass
         try:
