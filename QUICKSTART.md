@@ -15,7 +15,7 @@ pip install -r requirements.txt
 pytest tests/ -v
 ```
 
-Expected: **17 tests pass** ✓
+Expected: all tests pass ✓
 
 ### 3. Use in Robot Tests
 

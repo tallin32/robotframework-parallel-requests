@@ -44,14 +44,20 @@ for a later release.
 
 ## Installation
 
-**From PyPI (when released):**
+**From PyPI:**
 ```bash
 pip install robotframework-parallel-requests
+```
+
+**Optional HTTP/2 support:**
+```bash
+pip install robotframework-parallel-requests[http2]
 ```
 
 **Development/Local Installation:**
 ```bash
 pip install -r requirements.txt
+pip install -e .
 ```
 
 **Prerequisites:**
@@ -387,60 +393,12 @@ robot examples/parallel_requests.robot
 
 ## Contributing
 
-Contributions are welcome! For public/open-source contributions we recommend the
-fork → pull request workflow (standard GitHub flow). This keeps the main
-repository protected while making it easy for outside contributors to propose
-changes.
-
-Quick contribution steps (fork → PR):
-
-1. Fork the repository on GitHub to your account.
-2. Clone your fork and add the upstream remote:
-
-```powershell
-git clone git@github.com:your-username/robotframework-parallel-requests.git
-cd robotframework-parallel-requests
-git remote add upstream git@github.com:tallin32/robotframework-parallel-requests.git
-```
-
-3. Create a feature branch, make changes, run tests locally:
-
-```powershell
-git checkout -b feature/my-feature
-python -m venv .venv
-. .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-pytest tests/ -v
-```
-
-4. Push your branch to your fork and open a pull request against
-`tallin32/robotframework-parallel-requests:main`:
-
-```powershell
-git push origin feature/my-feature
-# then open a PR on GitHub from your branch into tallin32:main
-```
-
-Maintainer workflow (recommended for this repo):
-
-- Protect the `main` branch and require all changes via Pull Requests.
-- Require at least one reviewer and passing CI before merging.
-
-What to include in a PR:
-
-- A clear summary of the change and why it is needed.
-- Testing notes (how you ran tests locally, what CI should run).
-- If the change affects the public API, include README/docs updates.
-
-If you'd rather be added as a collaborator (for frequent contributors), reach
-out and we can add you as a repo collaborator so you can push branches directly
-— but merges should still go through PRs.
-
-If you want, I can add a `CONTRIBUTING.md` and a PR template to this repo (recommended); I can create those now.
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup,
+branching, and pull request expectations.
 
 ## License
 
-MIT (see LICENSE if present).
+MIT — see [LICENSE](LICENSE).
 
 ## Release Process
 
@@ -478,11 +436,22 @@ Changes since v0.1.0:
 - abc123 Short commit message (Author)
 ```
 
+### Trusted Publishing
+
+Configure trusted publishers with workflow file **`publish.yml`**.
+
+| Tag type | GitHub environment |
+|----------|--------------------|
+| Dev / alpha / beta | `testpypi` |
+| RC | `testpypi` and `pypi` |
+| Final | `pypi` |
+
 ### Release Steps
 
 1. Update `CHANGELOG.md` (for final/RC).
 2. Run tests: `pytest -v` and `robot examples/parallel_requests.robot`.
-3. Tag and push:
+3. Ensure the matching GitHub environment(s) and PyPI/TestPyPI trusted publishers exist.
+4. Tag and push:
     ```bash
     git tag v0.1.0rc1
     git push origin v0.1.0rc1
@@ -490,7 +459,7 @@ Changes since v0.1.0:
     git tag v0.1.0
     git push origin v0.1.0
     ```
-4. Workflow builds, uploads, generates notes, creates GitHub Release.
+5. Workflow builds, uploads, generates notes, creates GitHub Release.
 
 ### Installing Pre-Releases
 

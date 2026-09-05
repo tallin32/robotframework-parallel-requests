@@ -26,6 +26,16 @@ Ensure `pyproject.toml` `version` matches the tag before pushing.
 - RC and final tags publish to PyPI.
 - Workflow classification is controlled by `.github/workflows/publish.yml`.
 
+## Trusted publishing setup
+
+PyPI/TestPyPI trusted publishers need the **workflow file name** (not the workflow `name:`):
+
+- Workflow file: `publish.yml`
+- GitHub environments: `testpypi` (dev/alpha/beta/rc) and `pypi` (rc/final)
+
+For a `v*.*.*.devN` tag such as `v0.1.0.dev2`, only the `testpypi` environment is required.
+Add the `pypi` environment before the first RC or final tag.
+
 ## Dev release checklist
 
 1. Bump `version` in `pyproject.toml`.
