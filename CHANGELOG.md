@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-05
+
+### Fixed
+- `project.license` metadata now uses the table form so editable installs and sdist builds work with older setuptools on Python 3.8.
+
 ## [0.1.0] - 2026-09-05
 
 First public PyPI release. Promotes the `0.1.0.dev2` TestPyPI candidate.
