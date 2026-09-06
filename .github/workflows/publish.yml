@@ -110,6 +110,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Download distribution artifacts
         uses: actions/download-artifact@v4
@@ -141,16 +143,21 @@ jobs:
               echo "### $TAG"
               if [ -n "$PREV_TAG" ]; then
                 echo "Changes since $PREV_TAG:"
-                git log --pretty=format:'- %h %s (%an)' "$PREV_TAG".."$TAG" || echo "(No commits found in range)"
+                git log --pretty=tformat:'- %h %s (%an)' "$PREV_TAG".."$TAG" || echo "(No commits found in range)"
               else
                 echo "Initial tag; no previous tag to diff against."
-                git log --pretty=format:'- %h %s (%an)' || echo "(No commits)"
+                git log --pretty=tformat:'- %h %s (%an)' || echo "(No commits)"
               fi
             } > release_notes.md
           fi
-          echo "body<<EOF" >> $GITHUB_OUTPUT
-          cat release_notes.md >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # Ensure a trailing newline so the heredoc closer is on its own line.
+          # git log --pretty=format/tformat may omit one and break GITHUB_OUTPUT.
+          printf '\n' >> release_notes.md
+          {
+            echo "body<<RELEASE_NOTES_EOF"
+            cat release_notes.md
+            echo "RELEASE_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
