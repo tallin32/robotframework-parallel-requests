@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Updated Robot Framework dependency to `>=7.0,<8.0` for compatibility with RF 7.5 while maintaining 7.x compatibility. The library uses `ROBOT_LIBRARY_LISTENER = "SELF"` which requires Robot Framework 7.0 or later.
+
 ## [0.1.1] - 2026-09-05
 
 ### Fixed
