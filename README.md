@@ -62,11 +62,11 @@ pip install -e .
 
 **Prerequisites:**
 - Python 3.8+
-- Robot Framework 4.0+
+- Robot Framework 7.0+
 
 **Dependencies:**
 - `httpx>=0.23.0` - HTTP client
-- `robotframework>=4.0` - Robot Framework core
+- `robotframework>=7.0,<8.0` - Robot Framework core
 - `pytest>=7.0` - Testing (dev only)
 - `respx>=0.20.0` - httpx mocking (dev only)
 

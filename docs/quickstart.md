@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Python 3.8+
-- Robot Framework 4.0+
+- Robot Framework 7.0+
 
 ## Install for local development
 
